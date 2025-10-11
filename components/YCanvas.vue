@@ -32,6 +32,7 @@ let ctx: CanvasRenderingContext2D|null = null
 let octx: CanvasRenderingContext2D|null = null
 let drawing = false
 let rafId: number|undefined
+let currentStroke: {x: number, y: number}[] = []
 
 function resize() {
   const dpr = window.devicePixelRatio || 1
@@ -56,19 +57,26 @@ function pointerPos(ev: PointerEvent) {
 function onPointerDown(ev: PointerEvent) {
   if (!canvas.value) return
   drawing = true
+  currentStroke = []
   const p = pointerPos(ev)
+  currentStroke.push(p)
   props.onPoint(p.x, p.y)
   props.onCursor(p)
+  renderAll()
 }
 
 function onPointerMove(ev: PointerEvent) {
   const p = pointerPos(ev)
   props.onCursor(p)
   if (drawing) {
-    // throttle via rAF
+    currentStroke.push(p)
+    props.onPoint(p.x, p.y)
+    // throttle rendering via rAF
     if (!rafId) {
-      rafId = requestAnimationFrame(() => (rafId = undefined))
-      props.onPoint(p.x, p.y)
+      rafId = requestAnimationFrame(() => {
+        rafId = undefined
+        renderAll()
+      })
     }
   }
 }
@@ -76,8 +84,10 @@ function onPointerMove(ev: PointerEvent) {
 function onPointerUp() {
   if (!drawing) return
   drawing = false
+  currentStroke = []
   props.onCommit()
   props.onCursor(null)
+  renderAll()
 }
 
 function renderAll() {
@@ -86,6 +96,7 @@ function renderAll() {
   ctx.fillStyle = '#000000'
   ctx.fillRect(0, 0, canvas.value.width, canvas.value.height)
 
+  // Draw all committed strokes
   for (const s of props.strokes) {
     const pts = s.points
     if (!pts?.length) continue
@@ -96,6 +107,20 @@ function renderAll() {
     ctx.beginPath()
     ctx.moveTo(pts[0].x, pts[0].y)
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y)
+    ctx.stroke()
+  }
+
+  // Draw current stroke being drawn
+  if (drawing && currentStroke.length > 0) {
+    ctx.lineWidth = props.brushSize
+    ctx.lineJoin = 'round'
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = props.brushColor
+    ctx.beginPath()
+    ctx.moveTo(currentStroke[0].x, currentStroke[0].y)
+    for (let i = 1; i < currentStroke.length; i++) {
+      ctx.lineTo(currentStroke[i].x, currentStroke[i].y)
+    }
     ctx.stroke()
   }
 

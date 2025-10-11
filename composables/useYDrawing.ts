@@ -13,11 +13,17 @@ type Stroke = {
   at: number
 }
 
+// Generate a random bright color for each user
+function generateUserColor(): string {
+  const hue = Math.floor(Math.random() * 360)
+  return `hsl(${hue}, 85%, 65%)`
+}
+
 export function useYDrawing(roomId: string) {
   const { $createYRoom } = useNuxtApp() as any
   const ready = ref(false)
   const userId = ref(`guest-${Math.random().toString(16).slice(2,8)}`)
-  const brushColor = ref('#ffffff')
+  const brushColor = ref(generateUserColor())
   const brushSize = ref(3)
 
   let yroom: any
