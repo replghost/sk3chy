@@ -6,10 +6,14 @@ const props = defineProps<{
   peers: any[],              // awareness states
   brushColor: string,
   brushSize: number,
+  canDraw?: boolean,         // optional: if false, disable drawing
   onPoint: (x:number, y:number) => void,
   onCommit: () => void,
   onCursor: (pos:{x:number;y:number}|null) => void,
 }>()
+
+// Default canDraw to true if not provided
+const canDrawLocal = computed(() => props.canDraw !== false)
 
 const emit = defineEmits<{
   'update:brushColor': [value: string]
@@ -55,7 +59,7 @@ function pointerPos(ev: PointerEvent) {
 }
 
 function onPointerDown(ev: PointerEvent) {
-  if (!canvas.value) return
+  if (!canvas.value || !canDrawLocal.value) return
   drawing = true
   currentStroke = []
   const p = pointerPos(ev)
@@ -156,6 +160,7 @@ watch(() => props.peers, renderAll, { deep: true })
   <div class="relative w-full h-[70vh] border rounded-md overflow-hidden touch-none bg-black">
     <canvas ref="canvas"
       class="absolute inset-0 w-full h-full bg-black"
+      :class="{ 'cursor-not-allowed': !canDrawLocal, 'cursor-crosshair': canDrawLocal }"
       @pointerdown.passive="onPointerDown"
       @pointermove.passive="onPointerMove"
       @pointerup.passive="onPointerUp"

@@ -23,6 +23,7 @@ export function useYDrawing(roomId: string) {
   const { $createYRoom } = useNuxtApp() as any
   const ready = ref(false)
   const userId = ref(`guest-${Math.random().toString(16).slice(2,8)}`)
+  const displayName = ref('')
   const brushColor = ref(generateUserColor())
   const brushSize = ref(3)
 
@@ -37,7 +38,10 @@ export function useYDrawing(roomId: string) {
     yroom = $createYRoom(roomId, roomOpts)
     // awareness: set initial presence
     yroom.awareness.setLocalState({
-      id: userId.value, color: brushColor.value, cursor: null
+      id: userId.value, 
+      displayName: displayName.value,
+      color: brushColor.value, 
+      cursor: null
     })
 
     // react to remote changes
@@ -77,6 +81,11 @@ export function useYDrawing(roomId: string) {
     yroom.awareness.setLocalStateField('cursor', pos)
   }
 
+  function setDisplayName(name: string) {
+    displayName.value = name
+    yroom.awareness.setLocalStateField('displayName', name)
+  }
+
   function clearCanvas() {
     yroom.doc.transact(() => {
       yroom.strokes.delete(0, yroom.strokes.length)
@@ -94,8 +103,8 @@ export function useYDrawing(roomId: string) {
 
   return {
     // state
-    ready, strokes, peers, brushColor, brushSize, userId,
+    ready, strokes, peers, brushColor, brushSize, userId, displayName,
     // api
-    start, addPoint, commitStroke, setCursor, clearCanvas
+    start, addPoint, commitStroke, setCursor, setDisplayName, clearCanvas
   }
 }

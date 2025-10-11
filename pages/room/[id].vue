@@ -8,8 +8,8 @@ const route = useRoute()
 const roomId = String(route.params.id)
 
 const {
-  ready, strokes, peers, brushColor, brushSize, userId,
-  start, addPoint, commitStroke, setCursor, clearCanvas
+  ready, strokes, peers, brushColor, brushSize, userId, displayName,
+  start, addPoint, commitStroke, setCursor, setDisplayName, clearCanvas
 } = useYDrawing(roomId)
 
 onMounted(() => {
@@ -26,7 +26,16 @@ onMounted(() => {
     <div class="flex items-start justify-between">
       <div>
         <h1 class="text-xl font-semibold">Yjs Drawing · Room {{ roomId }}</h1>
-        <p class="text-sm text-gray-600">You are: {{ userId }}</p>
+        <div class="flex items-center gap-2 mt-2">
+          <UInput 
+            v-model="displayName" 
+            placeholder="Enter your name"
+            size="sm"
+            class="w-48"
+            @update:model-value="setDisplayName"
+          />
+          <span class="text-xs text-gray-500">({{ userId }})</span>
+        </div>
         <UButton 
           @click="clearCanvas" 
           color="red" 
@@ -51,10 +60,13 @@ onMounted(() => {
               class="w-3 h-3 rounded-full" 
               :style="{ backgroundColor: peer.color || '#0aa' }"
             />
-            <span :class="{ 'font-semibold': peer.id === userId }">
-              {{ peer.id }}
-              <span v-if="peer.id === userId" class="text-xs text-gray-500">(you)</span>
-            </span>
+            <div class="flex flex-col">
+              <span :class="{ 'font-semibold': peer.id === userId }">
+                {{ peer.displayName || 'Anonymous' }}
+                <span v-if="peer.id === userId" class="text-xs text-gray-500">(you)</span>
+              </span>
+              <span class="text-xs text-gray-400">{{ peer.id }}</span>
+            </div>
           </div>
           <p v-if="peers.length === 0" class="text-xs text-gray-400">No peers connected</p>
         </div>
