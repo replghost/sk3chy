@@ -159,6 +159,19 @@ export function useYPictionary(roomId: string) {
     })
   }
 
+  function newRound() {
+    // Clear everything and become the new host
+    yroom.doc.transact(() => {
+      // Clear strokes
+      yroom.strokes.delete(0, yroom.strokes.length)
+      // Clear guesses
+      const guessArray = yroom.doc.getArray<Guess>('guesses')
+      guessArray.delete(0, guessArray.length)
+      // Set new host
+      yroom.game.set('hostId', userId.value)
+    })
+  }
+
   function teardown() {
     try {
       yroom?.provider?.destroy()
@@ -173,6 +186,6 @@ export function useYPictionary(roomId: string) {
     ready, strokes, peers, guesses, brushColor, brushSize, userId, displayName,
     isHost, canDraw, hostId,
     // api
-    start, addPoint, commitStroke, setCursor, setDisplayName, sendGuess, clearCanvas, clearGuesses
+    start, addPoint, commitStroke, setCursor, setDisplayName, sendGuess, clearCanvas, clearGuesses, newRound
   }
 }

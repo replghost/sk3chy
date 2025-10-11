@@ -10,7 +10,7 @@ const roomId = `sk-${String(route.params.id)}`  // Prefix to make it independent
 const {
   ready, strokes, peers, guesses, brushColor, brushSize, userId, displayName,
   isHost, canDraw, hostId,
-  start, addPoint, commitStroke, setCursor, setDisplayName, sendGuess, clearCanvas, clearGuesses
+  start, addPoint, commitStroke, setCursor, setDisplayName, sendGuess, clearCanvas, clearGuesses, newRound
 } = useYPictionary(roomId)
 
 const guessInput = ref('')
@@ -74,16 +74,25 @@ onMounted(() => {
           </UBadge>
         </div>
 
-        <UButton 
-          v-if="canDraw"
-          @click="clearCanvas" 
-          color="red" 
-          variant="soft" 
-          size="sm" 
-          class="mt-2"
-        >
-          Clear Canvas
-        </UButton>
+        <div class="flex gap-2 mt-2">
+          <UButton 
+            v-if="canDraw"
+            @click="clearCanvas" 
+            color="red" 
+            variant="soft" 
+            size="sm"
+          >
+            Clear Canvas
+          </UButton>
+          <UButton 
+            @click="newRound" 
+            color="primary" 
+            variant="soft" 
+            size="sm"
+          >
+            New Round
+          </UButton>
+        </div>
       </div>
       
       <!-- Connected Peers -->
@@ -129,38 +138,50 @@ onMounted(() => {
       <p v-else>Connecting…</p>
 
       <!-- Guesses overlay -->
-      <div v-if="ready" class="absolute bottom-4 right-4 w-80 flex flex-col bg-black/40 backdrop-blur-md rounded-lg">
+      <div v-if="ready" class="absolute bottom-4 right-4 w-80 flex flex-col bg-black/40 backdrop-blur-md rounded-lg pointer-events-none">
         <!-- Guesses list -->
         <div 
           ref="guessesContainer"
-          class="overflow-y-auto p-3 space-y-2 max-h-[400px]"
+          class="overflow-y-auto p-3 space-y-1 max-h-[400px]"
         >
           <div 
             v-for="guess in guesses" 
             :key="guess.id"
-            class="text-sm text-white"
+            class="text-xs"
           >
-            <span class="font-semibold">{{ guess.displayName }}:</span>
-            <span class="ml-1">{{ guess.text }}</span>
+            <span 
+              class="opacity-40"
+              :style="{ color: peers.find(p => p.id === guess.by)?.color || '#fff' }"
+            >
+              {{ guess.displayName }}:
+            </span>
+            <span 
+              class="ml-1 opacity-70"
+              :style="{ color: peers.find(p => p.id === guess.by)?.color || '#fff' }"
+            >
+              {{ guess.text }}
+            </span>
           </div>
         </div>
 
         <!-- Input area -->
-        <div v-if="!canDraw" class="p-3 border-t border-white/10">
-          <div class="flex gap-2">
+        <div v-if="!canDraw" class="p-2 pointer-events-auto">
+          <div class="flex gap-1">
             <UInput 
               v-model="guessInput"
-              placeholder="Type your guess..."
-              size="sm"
-              class="flex-1"
+              placeholder="guess..."
+              size="xs"
+              class="flex-1 opacity-60 hover:opacity-100 transition-opacity"
               @keyup.enter="handleSendGuess"
             />
             <UButton 
               @click="handleSendGuess"
-              size="sm"
-              color="primary"
+              size="xs"
+              color="gray"
+              variant="ghost"
+              class="opacity-60 hover:opacity-100"
             >
-              Send
+              →
             </UButton>
           </div>
         </div>
