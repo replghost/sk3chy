@@ -6,12 +6,13 @@
           to="/" 
           class="text-xl font-bold text-neutral-900 dark:text-white hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
         >
-          🏆 Hackathon Voting
+          Peers
         </NuxtLink>
 
         <nav class="flex items-center gap-2">
           <UButton variant="ghost" to="/" size="sm">Home</UButton>
           <UButton variant="ghost" to="/projects" size="sm">Projects</UButton>
+          <UButton variant="ghost" to="/peers" size="sm">Peers</UButton>
           <UButton variant="ghost" to="/organizer" size="sm">Organizer</UButton>
           
           <UDivider orientation="vertical" class="h-6 mx-2" />
