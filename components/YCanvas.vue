@@ -157,15 +157,17 @@ watch(() => props.peers, renderAll, { deep: true })
 </script>
 
 <template>
-  <div class="relative w-full h-[70vh] border rounded-md overflow-hidden touch-none bg-black">
+  <div class="relative w-full border rounded-md overflow-hidden touch-none bg-black" style="aspect-ratio: 16/9; max-height: 80vh;">
     <canvas ref="canvas"
-      class="absolute inset-0 w-full h-full bg-black"
+      class="absolute inset-0 w-full h-full bg-black select-none"
       :class="{ 'cursor-not-allowed': !canDrawLocal, 'cursor-crosshair': canDrawLocal }"
-      @pointerdown.passive="onPointerDown"
-      @pointermove.passive="onPointerMove"
-      @pointerup.passive="onPointerUp"
-      @pointercancel.passive="onPointerUp"
-      @pointerleave.passive="onPointerUp"
+      style="user-select: none; -webkit-user-drag: none; -webkit-user-select: none;"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerUp"
+      @pointercancel="onPointerUp"
+      @pointerleave="onPointerUp"
+      @dragstart.prevent
     />
     <canvas ref="overlay" class="absolute inset-0 w-full h-full pointer-events-none" />
   </div>

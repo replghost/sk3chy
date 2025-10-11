@@ -16,6 +16,18 @@ const {
 const guessInput = ref('')
 const guessesContainer = ref<HTMLElement | null>(null)
 
+// Vibrant colors that pop on black background
+const drawingColors = [
+  '#FFFFFF', // White
+  '#FF006E', // Hot Pink
+  '#00F5FF', // Cyan
+  '#FFBE0B', // Yellow
+  '#FB5607', // Orange
+  '#8338EC', // Purple
+  '#3A86FF', // Blue
+  '#06FFA5', // Mint Green
+]
+
 const handleSendGuess = () => {
   if (guessInput.value.trim()) {
     sendGuess(guessInput.value)
@@ -72,6 +84,20 @@ onMounted(() => {
           >
             {{ isHost ? '🎨 Host (Drawing)' : '👀 Viewer' }}
           </UBadge>
+        </div>
+
+        <!-- Color picker for host -->
+        <div v-if="canDraw" class="mt-2">
+          <div class="flex gap-1 flex-wrap">
+            <button
+              v-for="color in drawingColors"
+              :key="color"
+              @click="brushColor = color"
+              class="w-8 h-8 rounded-full border-2 transition-all"
+              :class="brushColor === color ? 'border-white scale-110' : 'border-gray-600 hover:scale-105'"
+              :style="{ backgroundColor: color }"
+            />
+          </div>
         </div>
 
         <div class="flex gap-2 mt-2">
@@ -167,13 +193,14 @@ onMounted(() => {
       </div>
 
       <!-- Input area (separate, only for viewers) -->
-      <div v-if="ready && !canDraw" class="absolute bottom-4 right-4 w-80 p-2 pointer-events-auto z-10">
+      <div v-if="ready && !canDraw" class="absolute bottom-4 right-4 w-80 p-2 pointer-events-auto z-10 bg-black/30 backdrop-blur-sm rounded-lg">
         <div class="flex gap-1">
           <UInput 
             v-model="guessInput"
             placeholder="guess..."
             size="xs"
-            class="flex-1 opacity-60 hover:opacity-100 transition-opacity"
+            class="flex-1 transition-opacity"
+            :ui="{ base: 'bg-white/10 border-white/20 text-white placeholder-white/40' }"
             @keyup.enter="handleSendGuess"
           />
           <UButton 
