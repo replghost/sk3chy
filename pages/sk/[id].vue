@@ -138,52 +138,53 @@ onMounted(() => {
       <p v-else>Connecting…</p>
 
       <!-- Guesses overlay -->
-      <div v-if="ready" class="absolute bottom-4 right-4 w-80 flex flex-col bg-black/40 backdrop-blur-md rounded-lg pointer-events-none">
+      <div v-if="ready" class="absolute bottom-16 right-4 w-80 pointer-events-none select-none z-10">
         <!-- Guesses list -->
         <div 
           ref="guessesContainer"
-          class="overflow-y-auto p-3 space-y-1 max-h-[400px]"
+          class="overflow-y-auto p-3 space-y-1 max-h-[400px] pointer-events-none"
         >
           <div 
             v-for="guess in guesses" 
             :key="guess.id"
             class="text-xs"
+            style="text-shadow: 0 0 8px rgba(0,0,0,0.8), 0 0 4px rgba(0,0,0,0.9)"
           >
             <span 
-              class="opacity-40"
+              class="opacity-50"
               :style="{ color: peers.find(p => p.id === guess.by)?.color || '#fff' }"
             >
               {{ guess.displayName }}:
             </span>
             <span 
-              class="ml-1 opacity-70"
+              class="ml-1 opacity-80"
               :style="{ color: peers.find(p => p.id === guess.by)?.color || '#fff' }"
             >
               {{ guess.text }}
             </span>
           </div>
         </div>
+      </div>
 
-        <!-- Input area -->
-        <div v-if="!canDraw" class="p-2 pointer-events-auto">
-          <div class="flex gap-1">
-            <UInput 
-              v-model="guessInput"
-              placeholder="guess..."
-              size="xs"
-              class="flex-1 opacity-60 hover:opacity-100 transition-opacity"
-              @keyup.enter="handleSendGuess"
-            />
-            <UButton 
-              @click="handleSendGuess"
-              size="xs"
-              color="gray"
-              variant="ghost"
-              class="opacity-60 hover:opacity-100"
-            >
-              →
-            </UButton>
-          </div>
+      <!-- Input area (separate, only for viewers) -->
+      <div v-if="ready && !canDraw" class="absolute bottom-4 right-4 w-80 p-2 pointer-events-auto z-10">
+        <div class="flex gap-1">
+          <UInput 
+            v-model="guessInput"
+            placeholder="guess..."
+            size="xs"
+            class="flex-1 opacity-60 hover:opacity-100 transition-opacity"
+            @keyup.enter="handleSendGuess"
+          />
+          <UButton 
+            @click="handleSendGuess"
+            size="xs"
+            color="gray"
+            variant="ghost"
+            class="opacity-60 hover:opacity-100"
+          >
+            →
+          </UButton>
         </div>
       </div>
     </div>
