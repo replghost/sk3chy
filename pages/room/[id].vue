@@ -9,7 +9,7 @@ const roomId = String(route.params.id)
 
 const {
   ready, strokes, peers, brushColor, brushSize, userId,
-  start, addPoint, commitStroke, setCursor
+  start, addPoint, commitStroke, setCursor, clearCanvas
 } = useYDrawing(roomId)
 
 onMounted(() => {
@@ -27,6 +27,15 @@ onMounted(() => {
       <div>
         <h1 class="text-xl font-semibold">Yjs Drawing · Room {{ roomId }}</h1>
         <p class="text-sm text-gray-600">You are: {{ userId }}</p>
+        <UButton 
+          @click="clearCanvas" 
+          color="red" 
+          variant="soft" 
+          size="sm" 
+          class="mt-2"
+        >
+          Clear Canvas
+        </UButton>
       </div>
       
       <!-- Connected Peers -->

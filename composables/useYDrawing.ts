@@ -77,6 +77,12 @@ export function useYDrawing(roomId: string) {
     yroom.awareness.setLocalStateField('cursor', pos)
   }
 
+  function clearCanvas() {
+    yroom.doc.transact(() => {
+      yroom.strokes.delete(0, yroom.strokes.length)
+    })
+  }
+
   function teardown() {
     try {
       yroom?.provider?.destroy()
@@ -90,6 +96,6 @@ export function useYDrawing(roomId: string) {
     // state
     ready, strokes, peers, brushColor, brushSize, userId,
     // api
-    start, addPoint, commitStroke, setCursor
+    start, addPoint, commitStroke, setCursor, clearCanvas
   }
 }
