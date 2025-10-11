@@ -120,8 +120,9 @@ export function useYPictionary(roomId: string) {
   }
 
   function setCursor(pos: { x: number; y: number } | null) {
-    if (!canDraw.value) return
-    yroom.awareness.setLocalStateField('cursor', pos)
+    // Host doesn't broadcast cursor (they're drawing, not pointing)
+    // Only viewers would broadcast cursor, but they can't draw anyway
+    return
   }
 
   function setDisplayName(name: string) {
