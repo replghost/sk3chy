@@ -16,10 +16,13 @@
 
           <div class="space-y-4">
             <div>
-              <label class="block text-sm font-medium mb-2">Signaling Server URL</label>
-              <p class="text-sm text-neutral-600 dark:text-neutral-400 font-mono">
-                {{ signalingServer }}
-              </p>
+              <label class="block text-sm font-medium mb-2">Signaling Server</label>
+              <USelectMenu 
+                v-model="selectedServer" 
+                :options="serverOptions"
+                :disabled="connected"
+                placeholder="Select server"
+              />
             </div>
 
             <div v-if="peerId">
@@ -109,7 +112,15 @@ import { ref } from 'vue'
 import { useRuntimeConfig } from '#app'
 
 const config = useRuntimeConfig()
-const signalingServer = config.public.signalingServer
+
+// Server options
+const serverOptions = [
+  { label: 'Localhost (ws://localhost:4444)', value: 'ws://localhost:4444' },
+  { label: 'Production (Railway)', value: config.public.signalingServer },
+  { label: 'Yjs Public Server', value: 'wss://signaling.yjs.dev' },
+]
+
+const selectedServer = ref(serverOptions[0].value)
 
 const connected = ref(false)
 const inRoom = ref(false)
@@ -127,9 +138,9 @@ function addLog(message: string) {
 }
 
 function connect() {
-  addLog(`Connecting to ${signalingServer}...`)
+  addLog(`Connecting to ${selectedServer.value}...`)
   
-  ws = new WebSocket(signalingServer)
+  ws = new WebSocket(selectedServer.value)
 
   ws.onopen = () => {
     connected.value = true
@@ -142,30 +153,14 @@ function connect() {
       addLog(`📨 Received: ${message.type}`)
       
       switch (message.type) {
-        case 'announce':
-          if (message.peerId && !peerId.value) {
-            peerId.value = message.peerId
-            addLog(`🆔 Assigned peer ID: ${message.peerId}`)
+        case 'publish':
+          // y-webrtc protocol: publish messages contain peer info
+          if (message.topic === roomId.value && message.clients) {
+            addLog(`👥 Room has ${message.clients} clients (including you)`)
+            // Update peer count (subtract 1 for self)
+            const peerCount = Math.max(0, message.clients - 1)
+            peers.value = Array(peerCount).fill(null).map((_, i) => `peer-${i + 1}`)
           }
-          if (message.peers) {
-            peers.value = message.peers
-            addLog(`👥 Found ${message.peers.length} existing peers`)
-          }
-          if (message.peerId && message.peerId !== peerId.value) {
-            peers.value.push(message.peerId)
-            addLog(`👤 New peer joined: ${message.peerId}`)
-          }
-          break
-
-        case 'leave':
-          if (message.peerId) {
-            peers.value = peers.value.filter(p => p !== message.peerId)
-            addLog(`👋 Peer left: ${message.peerId}`)
-          }
-          break
-
-        case 'signal':
-          addLog(`📡 Signal from ${message.from}`)
           break
 
         case 'pong':
@@ -200,27 +195,43 @@ function disconnect() {
 function joinRoom() {
   if (!ws || !roomId.value) return
 
+  // y-webrtc protocol: subscribe to a topic (room)
   const message = {
-    type: 'join',
-    room: roomId.value
+    type: 'subscribe',
+    topics: [roomId.value]
   }
   
   ws.send(JSON.stringify(message))
   inRoom.value = true
-  addLog(`🚪 Joining room: ${roomId.value}`)
+  addLog(`🚪 Subscribing to room: ${roomId.value}`)
+  
+  // Send a publish message to announce presence
+  setTimeout(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      const announceMessage = {
+        type: 'publish',
+        topic: roomId.value,
+        data: { type: 'announce' }
+      }
+      ws.send(JSON.stringify(announceMessage))
+      addLog(`📢 Announced presence in room`)
+    }
+  }, 100)
 }
 
 function leaveRoom() {
   if (!ws) return
 
+  // y-webrtc protocol: unsubscribe from topic
   const message = {
-    type: 'leave'
+    type: 'unsubscribe',
+    topics: [roomId.value]
   }
   
   ws.send(JSON.stringify(message))
   inRoom.value = false
   peers.value = []
-  addLog('🚪 Left room')
+  addLog('🚪 Unsubscribed from room')
 }
 
 onBeforeUnmount(() => {

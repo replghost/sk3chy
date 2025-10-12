@@ -16,11 +16,11 @@ export default defineNuxtPlugin(() => {
     // offline-first cache
     const idb = new IndexeddbPersistence(`yjs-${roomId}`, doc)
 
-    // P2P transport using local signaling server
+    // P2P transport using y-webrtc compatible signaling servers
     const provider = new WebrtcProvider(roomId, doc, {
       signaling: opts?.signaling ?? [
-        config.public.signalingServer, // Configured signaling server
-        'wss://signaling.yjs.dev', // Fallback for demos
+        config.public.signalingServer, // Your Railway server
+        'wss://signaling.yjs.dev', // Fallback
       ],
       peerOpts: {
         config: {

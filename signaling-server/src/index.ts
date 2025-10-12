@@ -3,32 +3,29 @@ import { WebSocketServer, WebSocket } from 'ws';
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4444;
 const HEARTBEAT_INTERVAL = 30000; // 30 seconds
 
+interface YWebRTCMessage {
+  type: 'subscribe' | 'unsubscribe' | 'publish' | 'ping' | 'pong';
+  topics?: string[];
+  topic?: string;
+  clients?: number[];
+  [key: string]: any;
+}
+
 interface Client {
   ws: WebSocket;
-  id: string;
-  room: string | null;
+  topics: Set<string>;
   isAlive: boolean;
 }
 
-interface SignalMessage {
-  type: 'join' | 'leave' | 'signal' | 'announce' | 'ping' | 'pong';
-  room?: string;
-  peerId?: string;
-  from?: string;
-  to?: string;
-  signal?: any;
-  peers?: string[];
-}
-
-class SignalingServer {
+class YWebRTCSignalingServer {
   private wss: WebSocketServer;
-  private clients: Map<string, Client> = new Map();
-  private rooms: Map<string, Set<string>> = new Map();
+  private clients: Map<WebSocket, Client> = new Map();
+  private topics: Map<string, Set<WebSocket>> = new Map();
   private heartbeatInterval: Timer | null = null;
 
   constructor(port: number) {
     this.wss = new WebSocketServer({ port });
-    console.log(`🚀 Signaling server started on port ${port}`);
+    console.log(`🚀 y-webrtc signaling server started on port ${port}`);
     
     this.wss.on('connection', (ws: WebSocket) => {
       this.handleConnection(ws);
@@ -38,197 +35,171 @@ class SignalingServer {
   }
 
   private handleConnection(ws: WebSocket) {
-    const clientId = this.generateId();
     const client: Client = {
       ws,
-      id: clientId,
-      room: null,
+      topics: new Set(),
       isAlive: true,
     };
 
-    this.clients.set(clientId, client);
-    console.log(`✅ Client connected: ${clientId}`);
-
-    // Send client their ID
-    this.send(ws, {
-      type: 'announce',
-      peerId: clientId,
-    });
+    this.clients.set(ws, client);
+    console.log(`✅ Client connected. Total clients: ${this.clients.size}`);
 
     ws.on('message', (data: Buffer) => {
       try {
-        const message: SignalMessage = JSON.parse(data.toString());
-        this.handleMessage(clientId, message);
+        const message: YWebRTCMessage = JSON.parse(data.toString());
+        this.handleMessage(ws, message);
       } catch (error) {
         console.error('Failed to parse message:', error);
       }
     });
 
     ws.on('pong', () => {
-      const client = this.clients.get(clientId);
+      const client = this.clients.get(ws);
       if (client) {
         client.isAlive = true;
       }
     });
 
     ws.on('close', () => {
-      this.handleDisconnect(clientId);
+      this.handleDisconnect(ws);
     });
 
     ws.on('error', (error) => {
-      console.error(`Error for client ${clientId}:`, error);
-      this.handleDisconnect(clientId);
+      console.error('WebSocket error:', error);
+      this.handleDisconnect(ws);
     });
   }
 
-  private handleMessage(clientId: string, message: SignalMessage) {
-    const client = this.clients.get(clientId);
+  private handleMessage(ws: WebSocket, message: YWebRTCMessage) {
+    const client = this.clients.get(ws);
     if (!client) return;
 
     switch (message.type) {
-      case 'join':
-        this.handleJoin(clientId, message.room!);
+      case 'subscribe':
+        this.handleSubscribe(ws, message.topics || []);
         break;
 
-      case 'leave':
-        this.handleLeave(clientId);
+      case 'unsubscribe':
+        this.handleUnsubscribe(ws, message.topics || []);
         break;
 
-      case 'signal':
-        this.handleSignal(clientId, message);
+      case 'publish':
+        this.handlePublish(ws, message);
         break;
 
       case 'ping':
-        this.send(client.ws, { type: 'pong' });
+        this.send(ws, { type: 'pong' });
         break;
     }
   }
 
-  private handleJoin(clientId: string, roomId: string) {
-    const client = this.clients.get(clientId);
+  private handleSubscribe(ws: WebSocket, topics: string[]) {
+    const client = this.clients.get(ws);
     if (!client) return;
 
-    // Leave current room if in one
-    if (client.room) {
-      this.handleLeave(clientId);
-    }
+    topics.forEach(topic => {
+      // Add client to topic
+      client.topics.add(topic);
+      
+      if (!this.topics.has(topic)) {
+        this.topics.set(topic, new Set());
+      }
+      
+      const topicClients = this.topics.get(topic)!;
+      topicClients.add(ws);
 
-    // Join new room
-    client.room = roomId;
-    
-    if (!this.rooms.has(roomId)) {
-      this.rooms.set(roomId, new Set());
-    }
+      console.log(`📢 Client subscribed to topic: ${topic}. Topic size: ${topicClients.size}`);
 
-    const room = this.rooms.get(roomId)!;
-    const existingPeers = Array.from(room);
-    
-    room.add(clientId);
+      // Notify client about existing peers in this topic
+      const existingClients = Array.from(topicClients)
+        .filter(c => c !== ws)
+        .map((_, index) => index);
 
-    console.log(`👥 Client ${clientId} joined room ${roomId}. Room size: ${room.size}`);
-
-    // Notify the joining client about existing peers
-    this.send(client.ws, {
-      type: 'announce',
-      peerId: clientId,
-      peers: existingPeers,
-    });
-
-    // Notify existing peers about the new peer
-    existingPeers.forEach(peerId => {
-      const peer = this.clients.get(peerId);
-      if (peer) {
-        this.send(peer.ws, {
-          type: 'announce',
-          peerId: clientId,
+      if (existingClients.length > 0) {
+        this.send(ws, {
+          type: 'publish',
+          topic,
+          clients: existingClients,
         });
       }
     });
   }
 
-  private handleLeave(clientId: string) {
-    const client = this.clients.get(clientId);
-    if (!client || !client.room) return;
+  private handleUnsubscribe(ws: WebSocket, topics: string[]) {
+    const client = this.clients.get(ws);
+    if (!client) return;
 
-    const room = this.rooms.get(client.room);
-    if (room) {
-      room.delete(clientId);
+    topics.forEach(topic => {
+      client.topics.delete(topic);
       
-      // Notify other peers in the room
-      room.forEach(peerId => {
-        const peer = this.clients.get(peerId);
-        if (peer) {
-          this.send(peer.ws, {
-            type: 'leave',
-            peerId: clientId,
-          });
+      const topicClients = this.topics.get(topic);
+      if (topicClients) {
+        topicClients.delete(ws);
+        
+        // Clean up empty topics
+        if (topicClients.size === 0) {
+          this.topics.delete(topic);
         }
-      });
-
-      // Clean up empty rooms
-      if (room.size === 0) {
-        this.rooms.delete(client.room);
+        
+        console.log(`📢 Client unsubscribed from topic: ${topic}`);
       }
-
-      console.log(`👋 Client ${clientId} left room ${client.room}`);
-    }
-
-    client.room = null;
-  }
-
-  private handleSignal(clientId: string, message: SignalMessage) {
-    if (!message.to) {
-      console.error('Signal message missing "to" field');
-      return;
-    }
-
-    const targetClient = this.clients.get(message.to);
-    if (!targetClient) {
-      console.error(`Target client ${message.to} not found`);
-      return;
-    }
-
-    // Forward the signal to the target peer
-    this.send(targetClient.ws, {
-      type: 'signal',
-      from: clientId,
-      signal: message.signal,
     });
   }
 
-  private handleDisconnect(clientId: string) {
-    const client = this.clients.get(clientId);
-    if (!client) return;
+  private handlePublish(ws: WebSocket, message: YWebRTCMessage) {
+    const topic = message.topic;
+    if (!topic) return;
 
-    this.handleLeave(clientId);
-    this.clients.delete(clientId);
+    const topicClients = this.topics.get(topic);
+    if (!topicClients) return;
 
-    console.log(`❌ Client disconnected: ${clientId}. Total clients: ${this.clients.size}`);
+    // Broadcast message to all clients in the topic except sender
+    topicClients.forEach(client => {
+      if (client !== ws && client.readyState === WebSocket.OPEN) {
+        this.send(client, message);
+      }
+    });
   }
 
-  private send(ws: WebSocket, message: SignalMessage) {
+  private handleDisconnect(ws: WebSocket) {
+    const client = this.clients.get(ws);
+    if (!client) return;
+
+    // Remove client from all topics
+    client.topics.forEach(topic => {
+      const topicClients = this.topics.get(topic);
+      if (topicClients) {
+        topicClients.delete(ws);
+        
+        // Clean up empty topics
+        if (topicClients.size === 0) {
+          this.topics.delete(topic);
+        }
+      }
+    });
+
+    this.clients.delete(ws);
+    console.log(`❌ Client disconnected. Total clients: ${this.clients.size}`);
+  }
+
+  private send(ws: WebSocket, message: YWebRTCMessage) {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(message));
     }
   }
 
-  private generateId(): string {
-    return Math.random().toString(36).substring(2, 15) + 
-           Math.random().toString(36).substring(2, 15);
-  }
-
   private startHeartbeat() {
     this.heartbeatInterval = setInterval(() => {
-      this.clients.forEach((client, clientId) => {
+      this.clients.forEach((client, ws) => {
         if (!client.isAlive) {
-          console.log(`💀 Client ${clientId} failed heartbeat, terminating`);
-          client.ws.terminate();
-          this.handleDisconnect(clientId);
+          console.log('💀 Client failed heartbeat, terminating');
+          ws.terminate();
+          this.handleDisconnect(ws);
           return;
         }
 
         client.isAlive = false;
-        client.ws.ping();
+        ws.ping();
       });
     }, HEARTBEAT_INTERVAL);
   }
@@ -236,17 +207,17 @@ class SignalingServer {
   public getStats() {
     return {
       clients: this.clients.size,
-      rooms: this.rooms.size,
-      roomDetails: Array.from(this.rooms.entries()).map(([room, peers]) => ({
-        room,
-        peers: peers.size,
+      topics: this.topics.size,
+      topicDetails: Array.from(this.topics.entries()).map(([topic, clients]) => ({
+        topic,
+        clients: clients.size,
       })),
     };
   }
 }
 
 // Start the server
-const server = new SignalingServer(PORT);
+const server = new YWebRTCSignalingServer(PORT);
 
 // Log stats every minute
 setInterval(() => {

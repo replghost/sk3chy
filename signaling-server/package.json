@@ -4,16 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "start": "bun src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun",
-    "typecheck": "tsc --noEmit"
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
   },
   "dependencies": {
-    "ws": "^8.18.0"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/ws": "^8.5.10"
+    "ws": "^8.18.0",
+    "lib0": "^0.2.97"
   }
 }

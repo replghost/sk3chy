@@ -1,15 +1,15 @@
-FROM oven/bun:1 AS base
+FROM node:20-alpine
 WORKDIR /app
 
 # Install dependencies
-COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile
+COPY package.json package-lock.json* ./
+RUN npm install --production
 
 # Copy source code
-COPY . .
+COPY src ./src
 
 # Expose the signaling server port
 EXPOSE 4444
 
 # Run the server
-CMD ["bun", "start"]
+CMD ["npm", "start"]
