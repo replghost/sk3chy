@@ -11,9 +11,6 @@
 
         <nav class="flex items-center gap-2">
           <UButton variant="ghost" to="/" size="sm">Home</UButton>
-          <UButton variant="ghost" to="/projects" size="sm">Projects</UButton>
-          <UButton variant="ghost" to="/peers" size="sm">Peers</UButton>
-          <UButton variant="ghost" to="/organizer" size="sm">Organizer</UButton>
           
           <UDivider orientation="vertical" class="h-6 mx-2" />
           

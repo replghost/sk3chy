@@ -4,7 +4,7 @@
       <div class="py-4">
         <div class="flex items-center justify-between">
           <p class="text-xs text-neutral-500 dark:text-neutral-400">
-            © {{ currentYear }} Hackathon Voting
+            © {{ currentYear }} Peers
           </p>
           <p class="text-xs text-neutral-500 dark:text-neutral-400">
             Built on Polkadot
