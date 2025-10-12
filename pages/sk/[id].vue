@@ -59,11 +59,17 @@ onMounted(() => {
 })
 </script>
 
+<style scoped>
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+</style>
+
 <template>
   <section class="p-6 space-y-4">
     <div class="flex items-start justify-between">
       <div>
-        <h1 class="text-xl font-semibold">Pictionary · Room {{ route.params.id }}</h1>
+        <h1 class="text-xl font-semibold">Drawing · Room {{ route.params.id }}</h1>
         <div class="flex items-center gap-2 mt-2">
           <UInput 
             v-model="displayName" 
@@ -165,29 +171,32 @@ onMounted(() => {
 
       <!-- Guesses overlay -->
       <div v-if="ready" class="absolute bottom-16 right-4 w-80 pointer-events-none select-none z-10">
-        <!-- Guesses list -->
-        <div 
-          ref="guessesContainer"
-          class="overflow-y-auto p-3 space-y-1 max-h-[400px] pointer-events-none"
-        >
+        <!-- Guesses list with fade at top -->
+        <div class="relative max-h-[250px]">
           <div 
-            v-for="guess in guesses" 
-            :key="guess.id"
-            class="text-xs"
-            style="text-shadow: 0 0 8px rgba(0,0,0,0.8), 0 0 4px rgba(0,0,0,0.9)"
+            ref="guessesContainer"
+            class="overflow-y-auto p-3 space-y-1 max-h-[250px] pointer-events-auto scrollbar-hide"
+            style="mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%); -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%); scrollbar-width: none; -ms-overflow-style: none;"
           >
-            <span 
-              class="opacity-50"
-              :style="{ color: peers.find(p => p.id === guess.by)?.color || '#fff' }"
+            <div 
+              v-for="guess in guesses" 
+              :key="guess.id"
+              class="text-xs"
+              style="text-shadow: 0 0 8px rgba(0,0,0,0.8), 0 0 4px rgba(0,0,0,0.9)"
             >
-              {{ guess.displayName }}:
-            </span>
-            <span 
-              class="ml-1 opacity-80"
-              :style="{ color: peers.find(p => p.id === guess.by)?.color || '#fff' }"
-            >
-              {{ guess.text }}
-            </span>
+              <span 
+                class="opacity-50"
+                :style="{ color: peers.find(p => p.id === guess.by)?.color || '#fff' }"
+              >
+                {{ guess.displayName }}:
+              </span>
+              <span 
+                class="ml-1 opacity-80"
+                :style="{ color: peers.find(p => p.id === guess.by)?.color || '#fff' }"
+              >
+                {{ guess.text }}
+              </span>
+            </div>
           </div>
         </div>
       </div>
