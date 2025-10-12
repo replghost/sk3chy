@@ -91,7 +91,7 @@ export function useDrawingGame(roomId: string) {
   // Check if current user can draw
   const canDraw = computed(() => isHost.value && gameState.value.status === 'playing')
 
-  function start(roomOpts?: { signaling?: string[]; iceServers?: RTCIceServer[] }) {
+  async function start(roomOpts?: { signaling?: string[]; iceServers?: RTCIceServer[] }) {
     yroom = $createYRoom(roomId, roomOpts)
     
     // Debug logging
@@ -110,15 +110,20 @@ export function useDrawingGame(roomId: string) {
     
     const ygame = yroom.game
     
+    // Wait a bit for initial sync before claiming host
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
     // Initialize or load game state
     const existingHost = ygame.get('hostId')
     if (!existingHost) {
       // First user becomes host
       console.log('[DrawingGame] No existing host, becoming host')
-      ygame.set('hostId', userId.value)
-      ygame.set('status', 'waiting')
-      ygame.set('difficulty', 'medium')
-      ygame.set('duration', 180)
+      yroom.doc.transact(() => {
+        ygame.set('hostId', userId.value)
+        ygame.set('status', 'waiting')
+        ygame.set('difficulty', 'medium')
+        ygame.set('duration', 180)
+      })
       gameState.value.hostId = userId.value
     } else {
       // Load existing game state
