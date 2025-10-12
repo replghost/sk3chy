@@ -210,10 +210,10 @@ function generatePreview() {
       return
     }
   
-    // Use fixed dimensions for consistent output across devices
-    const fixedWidth = 1200
-    const fixedHeight = 900
-    const scale = 2 // For high-res text
+    // Use smaller dimensions to avoid freezing
+    const fixedWidth = 800
+    const fixedHeight = 600
+    const scale = 1 // Reduced scale for performance
   
     const exportCanvas = document.createElement('canvas')
     exportCanvas.width = fixedWidth * scale
@@ -263,21 +263,21 @@ function generatePreview() {
       const peer = peers.value.find(p => p.id === guess.by)
       const color = peer?.color || '#fff'
       
-      // Name on left, guess on right
       ctx.fillStyle = color
-      ctx.globalAlpha = 0.5
       ctx.font = `${14 * scale}px sans-serif`
+      
+      // Measure both texts
       const nameText = `${guess.displayName}:`
       const nameWidth = ctx.measureText(nameText).width
-      
-      // Draw name (right-aligned at guessX)
-      ctx.fillText(nameText, guessX, y)
-      
-      // Draw guess text (right-aligned, to the left of name)
-      ctx.globalAlpha = 0.8
-      ctx.font = `${14 * scale}px sans-serif`
       const guessWidth = ctx.measureText(guess.text).width
-      ctx.fillText(guess.text, guessX - nameWidth - 8 * scale - guessWidth, y)
+      
+      // Draw guess text first (right-aligned at guessX)
+      ctx.globalAlpha = 0.8
+      ctx.fillText(guess.text, guessX, y)
+      
+      // Draw name to the right of guess text
+      ctx.globalAlpha = 0.5
+      ctx.fillText(nameText, guessX + 8 * scale, y)
     })
     
     ctx.globalAlpha = 1
@@ -329,18 +329,21 @@ function generatePreview() {
 // Generate preview when game finishes
 watch(() => gameState.value.status, (newStatus, oldStatus) => {
   if (newStatus === 'finished' && oldStatus !== 'finished') {
-    showFinishModal.value = false // Hide modal initially
-    // Use requestIdleCallback or setTimeout to avoid blocking
+    // Show modal immediately - don't wait for preview
+    showFinishModal.value = true
+    
+    // Generate preview in background (optional)
     if ('requestIdleCallback' in window) {
-      requestIdleCallback(() => generatePreview(), { timeout: 2000 })
+      requestIdleCallback(() => generatePreview(), { timeout: 3000 })
     } else {
-      setTimeout(() => generatePreview(), 500)
+      setTimeout(() => generatePreview(), 1000)
     }
   }
   
   // Reset modal flag when leaving finished state
   if (oldStatus === 'finished' && newStatus !== 'finished') {
     showFinishModal.value = false
+    exportedImageUrl.value = null
   }
 })
 
@@ -731,7 +734,7 @@ onMounted(() => {
         
         <!-- Responsive Layout: Horizontal on desktop, Vertical on mobile -->
         <div class="flex flex-col md:flex-row gap-3 md:gap-6">
-          <!-- PNG Preview -->
+          <!-- PNG Preview (optional - loads in background) -->
           <div v-if="exportedImageUrl" class="flex-shrink-0 md:w-1/2 relative">
             <div class="rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700 max-h-[40vh] md:max-h-none">
               <img :src="exportedImageUrl" alt="Drawing" class="w-full h-full object-contain md:object-cover" />
@@ -746,6 +749,16 @@ onMounted(() => {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
             </button>
+          </div>
+          
+          <!-- Loading placeholder while preview generates -->
+          <div v-else class="flex-shrink-0 md:w-1/2 relative">
+            <div class="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 h-64 md:h-full flex items-center justify-center">
+              <div class="text-center text-gray-400">
+                <div class="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+                <p class="text-sm">Generating preview...</p>
+              </div>
+            </div>
           </div>
           
           <!-- Info Panel -->
