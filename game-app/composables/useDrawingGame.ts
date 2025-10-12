@@ -99,7 +99,7 @@ export function useDrawingGame(roomId: string) {
     
     // Log provider connection status
     yroom.provider.on('status', (event: any) => {
-      console.log('[DrawingGame] Provider status:', event.status)
+      console.log('[DrawingGame] Provider status:', event.status || 'initializing')
     })
     
     yroom.provider.on('peers', (event: any) => {
@@ -158,7 +158,9 @@ export function useDrawingGame(roomId: string) {
 
     // awareness update
     yroom.awareness.on('change', () => {
-      peers.value = Array.from(yroom.awareness.getStates().values())
+      const states = yroom.awareness.getStates()
+      peers.value = Array.from(states.values())
+      console.log('[DrawingGame] Awareness changed. Peers:', peers.value.length, peers.value)
       
       // Check if host is still connected
       checkHostPresence()

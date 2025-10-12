@@ -191,124 +191,151 @@ function downloadDrawing() {
     const a = document.createElement('a')
     a.href = url
     a.download = `drawing-${gameState.value.selectedWord}-${Date.now()}.png`
-    a.click()
   }, 'image/png', 0.95) // High quality PNG
 }
 
 // Generate preview (not download) when game finishes
 function generatePreview() {
-  const canvas = canvasRef.value?.$el?.querySelector('canvas')
-  if (!canvas) return
-  
-  // Use fixed dimensions for consistent output across devices
-  const fixedWidth = 1200
-  const fixedHeight = 900
-  const scale = 2 // For high-res text
-  
-  const exportCanvas = document.createElement('canvas')
-  exportCanvas.width = fixedWidth * scale
-  exportCanvas.height = fixedHeight * scale
-  const ctx = exportCanvas.getContext('2d')
-  if (!ctx) return
-  
-  // Enable high-quality rendering
-  ctx.imageSmoothingEnabled = true
-  ctx.imageSmoothingQuality = 'high'
-  
-  // Draw the original canvas scaled to fit
-  const aspectRatio = canvas.width / canvas.height
-  const targetAspectRatio = fixedWidth / fixedHeight
-  
-  let drawWidth = fixedWidth * scale
-  let drawHeight = fixedHeight * scale
-  let offsetX = 0
-  let offsetY = 0
-  
-  if (aspectRatio > targetAspectRatio) {
-    drawHeight = (fixedWidth / aspectRatio) * scale
-    offsetY = (fixedHeight * scale - drawHeight) / 2
-  } else {
-    drawWidth = (fixedHeight * aspectRatio) * scale
-    offsetX = (fixedWidth * scale - drawWidth) / 2
-  }
-  
-  ctx.fillStyle = '#000000'
-  ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
-  ctx.drawImage(canvas, offsetX, offsetY, drawWidth, drawHeight)
-  
-  // Draw guesses on the right side (wider area for less wrapping)
-  const guessX = exportCanvas.width - 60 * scale
-  const guessY = exportCanvas.height - 160 * scale
-  const recentGuesses = guesses.value.slice(-8) // Last 8 guesses
-  
-  ctx.textAlign = 'right'
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.8)'
-  ctx.shadowBlur = 8 * scale
-  
-  recentGuesses.forEach((guess, i) => {
-    const y = guessY - (recentGuesses.length - i - 1) * 24 * scale
-    const peer = peers.value.find(p => p.id === guess.by)
-    const color = peer?.color || '#fff'
-    
-    // Name on left, guess on right
-    ctx.fillStyle = color
-    ctx.globalAlpha = 0.5
-    ctx.font = `${14 * scale}px sans-serif`
-    const nameText = `${guess.displayName}:`
-    const nameWidth = ctx.measureText(nameText).width
-    
-    // Draw name (right-aligned at guessX)
-    ctx.fillText(nameText, guessX, y)
-    
-    // Draw guess text (right-aligned, to the left of name)
-    ctx.globalAlpha = 0.8
-    ctx.font = `${14 * scale}px sans-serif`
-    const guessWidth = ctx.measureText(guess.text).width
-    ctx.fillText(guess.text, guessX - nameWidth - 8 * scale - guessWidth, y)
-  })
-  
-  ctx.globalAlpha = 1
-  ctx.shadowBlur = 0
-  
-  // Add info bar at the bottom
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'
-  ctx.fillRect(0, exportCanvas.height - 120 * scale, exportCanvas.width, 120 * scale)
-  
-  ctx.fillStyle = 'white'
-  ctx.textAlign = 'center'
-  ctx.font = `bold ${32 * scale}px sans-serif`
-  ctx.fillText(`"${gameState.value.selectedWord}"`, exportCanvas.width / 2, exportCanvas.height - 70 * scale)
-  
-  if (gameState.value.winnerId) {
-    ctx.font = `${24 * scale}px sans-serif`
-    ctx.fillText(`🎉 Winner: ${gameState.value.winnerName}`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
-  } else {
-    ctx.font = `${20 * scale}px sans-serif`
-    ctx.fillStyle = '#aaa'
-    ctx.fillText(`Time's up - No winner`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
-  }
-  
-  // Convert to blob and create preview only (no download)
-  exportCanvas.toBlob((blob) => {
-    if (!blob) return
-    const url = URL.createObjectURL(blob)
-    
-    // Set preview
-    if (exportedImageUrl.value) {
-      URL.revokeObjectURL(exportedImageUrl.value)
+  try {
+    if (!canvasRef.value?.$el) {
+      console.warn('Canvas ref not available')
+      showFinishModal.value = true // Show modal anyway
+      return
     }
-    exportedImageUrl.value = url
     
-    // Show modal now that preview is ready
+    const canvas = canvasRef.value.$el.querySelector('canvas')
+    if (!canvas) {
+      console.warn('Canvas element not found')
+      showFinishModal.value = true // Show modal anyway
+      return
+    }
+  
+    // Use fixed dimensions for consistent output across devices
+    const fixedWidth = 1200
+    const fixedHeight = 900
+    const scale = 2 // For high-res text
+  
+    const exportCanvas = document.createElement('canvas')
+    exportCanvas.width = fixedWidth * scale
+    exportCanvas.height = fixedHeight * scale
+    const ctx = exportCanvas.getContext('2d')
+    if (!ctx) {
+      showFinishModal.value = true
+      return
+    }
+    
+    // Enable high-quality rendering
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    
+    // Draw the original canvas scaled to fit
+    const aspectRatio = canvas.width / canvas.height
+    const targetAspectRatio = fixedWidth / fixedHeight
+    
+    let drawWidth = fixedWidth * scale
+    let drawHeight = fixedHeight * scale
+    let offsetX = 0
+    let offsetY = 0
+    
+    if (aspectRatio > targetAspectRatio) {
+      drawHeight = (fixedWidth / aspectRatio) * scale
+      offsetY = (fixedHeight * scale - drawHeight) / 2
+    } else {
+      drawWidth = (fixedHeight * aspectRatio) * scale
+      offsetX = (fixedWidth * scale - drawWidth) / 2
+    }
+    
+    ctx.fillStyle = '#000000'
+    ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
+    ctx.drawImage(canvas, offsetX, offsetY, drawWidth, drawHeight)
+    
+    // Draw guesses on the right side (wider area for less wrapping)
+    const guessX = exportCanvas.width - 60 * scale
+    const guessY = exportCanvas.height - 160 * scale
+    const recentGuesses = guesses.value.slice(-8) // Last 8 guesses
+    
+    ctx.textAlign = 'right'
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)'
+    ctx.shadowBlur = 8 * scale
+    
+    recentGuesses.forEach((guess, i) => {
+      const y = guessY - (recentGuesses.length - i - 1) * 24 * scale
+      const peer = peers.value.find(p => p.id === guess.by)
+      const color = peer?.color || '#fff'
+      
+      // Name on left, guess on right
+      ctx.fillStyle = color
+      ctx.globalAlpha = 0.5
+      ctx.font = `${14 * scale}px sans-serif`
+      const nameText = `${guess.displayName}:`
+      const nameWidth = ctx.measureText(nameText).width
+      
+      // Draw name (right-aligned at guessX)
+      ctx.fillText(nameText, guessX, y)
+      
+      // Draw guess text (right-aligned, to the left of name)
+      ctx.globalAlpha = 0.8
+      ctx.font = `${14 * scale}px sans-serif`
+      const guessWidth = ctx.measureText(guess.text).width
+      ctx.fillText(guess.text, guessX - nameWidth - 8 * scale - guessWidth, y)
+    })
+    
+    ctx.globalAlpha = 1
+    ctx.shadowBlur = 0
+    
+    // Add info bar at the bottom
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'
+    ctx.fillRect(0, exportCanvas.height - 120 * scale, exportCanvas.width, 120 * scale)
+    
+    ctx.fillStyle = 'white'
+    ctx.textAlign = 'center'
+    ctx.font = `bold ${32 * scale}px sans-serif`
+    ctx.fillText(`"${gameState.value.selectedWord}"`, exportCanvas.width / 2, exportCanvas.height - 70 * scale)
+    
+    if (gameState.value.winnerId) {
+      ctx.font = `${24 * scale}px sans-serif`
+      ctx.fillText(`🎉 Winner: ${gameState.value.winnerName}`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
+    } else {
+      ctx.font = `${20 * scale}px sans-serif`
+      ctx.fillStyle = '#aaa'
+      ctx.fillText(`Time's up - No winner`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
+    }
+  
+    // Convert to blob and create preview only (no download)
+    // Use lower quality to speed up generation
+    exportCanvas.toBlob((blob) => {
+      if (!blob) {
+        showFinishModal.value = true
+        return
+      }
+      const url = URL.createObjectURL(blob)
+      
+      // Set preview
+      if (exportedImageUrl.value) {
+        URL.revokeObjectURL(exportedImageUrl.value)
+      }
+      exportedImageUrl.value = url
+      
+      // Show modal now that preview is ready
+      showFinishModal.value = true
+    }, 'image/png', 0.7) // Reduced quality for faster generation
+  } catch (error) {
+    console.error('Error generating preview:', error)
+    // Show modal anyway even if preview fails
     showFinishModal.value = true
-  }, 'image/png', 0.95)
+  }
 }
 
 // Generate preview when game finishes
 watch(() => gameState.value.status, (newStatus, oldStatus) => {
   if (newStatus === 'finished' && oldStatus !== 'finished') {
     showFinishModal.value = false // Hide modal initially
-    setTimeout(() => generatePreview(), 500) // Small delay to ensure canvas is ready
+    // Use requestIdleCallback or setTimeout to avoid blocking
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => generatePreview(), { timeout: 2000 })
+    } else {
+      setTimeout(() => generatePreview(), 500)
+    }
   }
   
   // Reset modal flag when leaving finished state
@@ -353,26 +380,24 @@ watch(() => gameState.value.winnerId, (newWinnerId, oldWinnerId) => {
 onMounted(() => {
   // Build ICE servers array
   const iceServers: RTCIceServer[] = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:global.stun.twilio.com:3478' }
+    { urls: 'stun:stun.l.google.com:19302' }
   ]
 
-  // Add TURN servers if credentials are configured
+  // Add TURN servers only if credentials are configured (for production)
   if (config.public.turnUsername && config.public.turnCredential) {
-    const turnServers = [
-      { urls: 'turn:a.relay.metered.ca:80' },
-      { urls: 'turn:a.relay.metered.ca:80?transport=tcp' },
-      { urls: 'turn:a.relay.metered.ca:443' },
-      { urls: 'turn:a.relay.metered.ca:443?transport=tcp' }
-    ]
-    
-    turnServers.forEach(server => {
-      iceServers.push({
-        ...server,
+    // Use only 2 TURN servers to avoid the "5+ servers" warning
+    iceServers.push(
+      {
+        urls: 'turn:a.relay.metered.ca:80',
         username: config.public.turnUsername,
         credential: config.public.turnCredential
-      })
-    })
+      },
+      {
+        urls: 'turn:a.relay.metered.ca:443',
+        username: config.public.turnUsername,
+        credential: config.public.turnCredential
+      }
+    )
   }
 
   start({ iceServers })
@@ -578,7 +603,7 @@ onMounted(() => {
         <!-- Close button (mobile only) -->
         <button
           @click="() => { resetGame(); selectedWordLocal = null; showFinishModal = false }"
-          class="md:hidden absolute top-2 right-2 p-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-full transition-colors z-10"
+          class="md:hidden absolute top-2 left-2 p-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-full transition-colors z-10"
           title="Close"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
