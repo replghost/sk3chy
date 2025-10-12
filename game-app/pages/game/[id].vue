@@ -418,8 +418,8 @@ onMounted(() => {
 
 <template>
   <!-- Full-screen Lobby for Waiting State -->
-  <div v-if="gameState.status === 'waiting'" class="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 p-6">
-    <div class="max-w-6xl mx-auto">
+  <div v-if="gameState.status === 'waiting'" class="flex items-center justify-center p-6 py-16">
+    <div class="max-w-6xl w-full">
       <!-- Header -->
       <div class="text-center mb-8">
         <h1 class="text-4xl font-bold mb-2">🎨 Drawing Game Lobby</h1>
