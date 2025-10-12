@@ -328,17 +328,19 @@ function generatePreview() {
 
 // Generate preview when game finishes
 watch(() => gameState.value.status, (newStatus, oldStatus) => {
+  console.log('[Game Page] Status changed:', oldStatus, '->', newStatus, 'showFinishModal:', showFinishModal.value)
+  
   if (newStatus === 'finished' && oldStatus !== 'finished') {
+    console.log('[Game Page] Setting showFinishModal to true')
     // Show modal immediately
     showFinishModal.value = true
     
-    // DISABLED: Preview generation causes page unresponsive on host
-    // TODO: Move to web worker or skip entirely
-    // if ('requestIdleCallback' in window) {
-    //   requestIdleCallback(() => generatePreview(), { timeout: 3000 })
-    // } else {
-    //   setTimeout(() => generatePreview(), 1000)
-    // }
+    // Generate preview in background (non-blocking)
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => generatePreview(), { timeout: 2000 })
+    } else {
+      setTimeout(() => generatePreview(), 500)
+    }
   }
   
   // Reset modal flag when leaving finished state
@@ -346,7 +348,7 @@ watch(() => gameState.value.status, (newStatus, oldStatus) => {
     showFinishModal.value = false
     exportedImageUrl.value = null
   }
-})
+}, { immediate: true })
 
 // Trigger confetti when someone wins
 watch(() => gameState.value.winnerId, (newWinnerId, oldWinnerId) => {
@@ -719,104 +721,6 @@ onMounted(() => {
         </span>
     </div>
 
-    <!-- Game Finished Modal -->
-    <div v-if="showFinishModal && gameState.status === 'finished'" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 md:p-4" @click.self="() => { resetGame(); selectedWordLocal = null; showFinishModal = false }">
-      <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-4xl w-full max-h-[95vh] md:max-h-none overflow-y-auto p-3 md:p-6 relative">
-        <!-- Close button (mobile only) -->
-        <button
-          @click="() => { resetGame(); selectedWordLocal = null; showFinishModal = false }"
-          class="md:hidden absolute top-2 left-2 p-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-full transition-colors z-10"
-          title="Close"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-        
-        <!-- Responsive Layout: Horizontal on desktop, Vertical on mobile -->
-        <div class="flex flex-col md:flex-row gap-3 md:gap-6">
-          <!-- PNG Preview (optional - loads in background) -->
-          <div v-if="exportedImageUrl" class="flex-shrink-0 md:w-1/2 relative">
-            <div class="rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700 max-h-[40vh] md:max-h-none">
-              <img :src="exportedImageUrl" alt="Drawing" class="w-full h-full object-contain md:object-cover" />
-            </div>
-            <!-- Download button overlay -->
-            <button
-              @click="downloadDrawing"
-              class="absolute top-2 right-2 p-2 bg-black/60 hover:bg-black/80 backdrop-blur-sm rounded-lg transition-all"
-              title="Download PNG"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-            </button>
-          </div>
-          
-          <!-- Generate image button -->
-          <div v-else class="flex-shrink-0 md:w-1/2 relative">
-            <div class="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 h-64 md:h-full flex items-center justify-center">
-              <div class="text-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <UButton 
-                  @click="generatePreview"
-                  color="primary"
-                  size="lg"
-                >
-                  Generate Image
-                </UButton>
-                <p class="text-xs text-gray-400 mt-2">Click to create downloadable image</p>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Info Panel -->
-          <div class="flex-1 flex flex-col justify-between min-h-0">
-            <div>
-              <h2 class="text-xl md:text-3xl font-bold mb-2 md:mb-3">Game Over!</h2>
-              
-              <div class="space-y-2 md:space-y-3">
-                <div>
-                  <p class="text-gray-600 dark:text-gray-400 text-xs mb-1">The word was:</p>
-                  <p class="text-xl md:text-3xl font-bold text-primary">{{ gameState.selectedWord }}</p>
-                </div>
-                
-                <div v-if="gameState.winnerId" class="bg-green-50 dark:bg-green-900/20 rounded-lg p-2 md:p-3">
-                  <p class="text-base md:text-lg mb-1">🎉</p>
-                  <p class="font-semibold text-green-700 dark:text-green-400 text-xs md:text-sm">Winner: {{ gameState.winnerName }}</p>
-                </div>
-                <div v-else class="bg-gray-50 dark:bg-gray-800 rounded-lg p-2 md:p-3">
-                  <p class="text-base md:text-lg mb-1">⏰</p>
-                  <p class="text-gray-600 dark:text-gray-400 text-xs md:text-sm">Time's up! No one guessed it.</p>
-                </div>
-                
-                <div class="flex items-center gap-2 md:gap-3 text-xs text-gray-500 dark:text-gray-400">
-                  <span>Duration: {{ formattedActualDuration }}</span>
-                  
-                  <!-- Verification Badge -->
-                  <div v-if="gameState.commitmentVerified !== null" class="inline-flex items-center gap-1 px-2 py-1 rounded-full" :class="gameState.commitmentVerified ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'">
-                    <span>{{ gameState.commitmentVerified ? '✓' : '✗' }}</span>
-                    <span class="hidden md:inline">{{ gameState.commitmentVerified ? 'Verified' : 'Failed' }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div class="mt-3 md:mt-4 flex justify-center">
-              <UButton
-                @click="() => { resetGame(); selectedWordLocal = null; showFinishModal = false }"
-                color="primary"
-                size="sm"
-              >
-                New Game (Become Host)
-              </UButton>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Canvas with overlay -->
     <div v-if="gameState.status === 'playing' || gameState.status === 'finished'" class="relative">
       <YCanvas
@@ -903,4 +807,97 @@ onMounted(() => {
       </div>
     </div>
   </section>
+
+  <!-- Game Finished Modal (outside section so it's always available) -->
+  <div v-if="showFinishModal && gameState.status === 'finished'" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 md:p-4" style="z-index: 99999;" @click.self="() => { resetGame(); selectedWordLocal = null; showFinishModal = false }">
+    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-4xl w-full max-h-[95vh] md:max-h-none overflow-y-auto p-3 md:p-6 relative">
+      <!-- Close button (mobile only) -->
+      <button
+        @click="() => { resetGame(); selectedWordLocal = null; showFinishModal = false }"
+        class="md:hidden absolute top-2 left-2 p-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-full transition-colors z-10"
+        title="Close"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+      
+      <!-- Responsive Layout: Horizontal on desktop, Vertical on mobile -->
+      <div class="flex flex-col md:flex-row gap-3 md:gap-6">
+        <!-- PNG Preview (optional - loads in background) -->
+        <div v-if="exportedImageUrl" class="flex-shrink-0 md:w-1/2 relative">
+          <div class="rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700 max-h-[40vh] md:max-h-none">
+            <img :src="exportedImageUrl" alt="Drawing" class="w-full h-full object-contain md:object-cover" />
+          </div>
+          <!-- Download button overlay -->
+          <button
+            @click="downloadDrawing"
+            class="absolute top-2 right-2 p-2 bg-black/60 hover:bg-black/80 backdrop-blur-sm rounded-lg transition-all"
+            title="Download PNG"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </button>
+        </div>
+        
+        <!-- Loading placeholder while preview generates -->
+        <div v-else class="flex-shrink-0 md:w-1/2 relative">
+          <div class="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 h-64 md:h-full flex items-center justify-center">
+            <div class="text-center text-gray-400">
+              <div class="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-3"></div>
+              <p class="text-sm">Generating preview...</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Info Panel -->
+        <div class="flex-1 flex flex-col justify-between min-h-0">
+          <div>
+            <h2 class="text-xl md:text-3xl font-bold mb-2 md:mb-3">Game Over!</h2>
+            
+            <div class="space-y-2 md:space-y-3">
+              <div>
+                <p class="text-gray-600 dark:text-gray-400 text-xs mb-1">The word was:</p>
+                <p class="text-xl md:text-3xl font-bold text-primary">{{ gameState.selectedWord }}</p>
+              </div>
+              
+              <div v-if="gameState.winnerId">
+                <p class="text-gray-600 dark:text-gray-400 text-xs mb-1">Winner:</p>
+                <p class="text-lg md:text-2xl font-bold text-green-600 dark:text-green-400">
+                  🏆 {{ gameState.winnerName }}
+                </p>
+              </div>
+              <div v-else>
+                <p class="text-gray-600 dark:text-gray-400 text-xs mb-1">Result:</p>
+                <p class="text-lg md:text-xl font-semibold text-gray-500">
+                  ⏱️ Time's up - No winner
+                </p>
+              </div>
+
+              <div class="text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-700">
+                <div class="flex items-center gap-2">
+                  <span>Commitment Verification:</span>
+                  <div v-if="gameState.commitmentVerified !== null" class="inline-flex items-center gap-1 px-2 py-1 rounded-full" :class="gameState.commitmentVerified ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'">
+                    <span>{{ gameState.commitmentVerified ? '✓' : '✗' }}</span>
+                    <span class="hidden md:inline">{{ gameState.commitmentVerified ? 'Verified' : 'Failed' }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="mt-3 md:mt-4 flex justify-center">
+            <UButton
+              @click.stop="() => { console.log('Reset clicked'); resetGame(); selectedWordLocal = null; showFinishModal = false }"
+              color="primary"
+              size="lg"
+            >
+              New Game (Become Host)
+            </UButton>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>

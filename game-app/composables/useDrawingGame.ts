@@ -76,6 +76,7 @@ export function useDrawingGame(roomId: string) {
   // Local state for commit-reveal (not synced to Yjs)
   let localSelectedWord: string | null = null
   let localSalt: string | null = null
+  let isVerifying = false // Prevent verification loops
 
   let yroom: any
   let pending: Point[] = []
@@ -212,9 +213,11 @@ export function useDrawingGame(roomId: string) {
       commitmentVerified: ygame.get('commitmentVerified') || null
     }
 
-    // Verify commitment when word is revealed
-    if (gameState.value.status === 'finished' && gameState.value.selectedWord && gameState.value.wordSalt) {
-      verifyCommitment()
+    // Verify commitment when word is revealed (async, non-blocking)
+    if (gameState.value.status === 'finished' && gameState.value.selectedWord && gameState.value.wordSalt && !isVerifying) {
+      console.log('[DrawingGame] Game finished, verifying commitment...')
+      isVerifying = true
+      setTimeout(() => verifyCommitment(), 0) // Run async to avoid blocking
     }
 
     // Start timer if game is playing
@@ -277,6 +280,7 @@ export function useDrawingGame(roomId: string) {
       timeRemaining.value = Math.max(0, remaining)
       
       if (remaining <= 0) {
+        console.log('[DrawingGame] Time expired! Ending game. isHost:', isHost.value)
         endGame(null, null)
       }
     }, 100)
@@ -309,12 +313,15 @@ export function useDrawingGame(roomId: string) {
   }
 
   function endGame(winnerId: string | null, winnerName: string | null) {
+    console.log('[DrawingGame] endGame called. winnerId:', winnerId, 'isHost:', isHost.value, 'localWord:', localSelectedWord, 'localSalt:', localSalt?.substring(0, 10))
+    
     if (timerInterval) {
       clearInterval(timerInterval)
       timerInterval = null
     }
     
     if (isHost.value) {
+      console.log('[DrawingGame] Host ending game, revealing word and salt')
       // Reveal phase: broadcast the word and salt so everyone can verify
       yroom.doc.transact(() => {
         yroom.game.set('status', 'finished')
@@ -324,6 +331,8 @@ export function useDrawingGame(roomId: string) {
         yroom.game.set('selectedWord', localSelectedWord) // Reveal the word
         yroom.game.set('wordSalt', localSalt) // Reveal the salt
       })
+    } else {
+      console.log('[DrawingGame] Not host, cannot end game')
     }
   }
 

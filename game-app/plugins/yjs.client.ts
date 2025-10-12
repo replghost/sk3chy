@@ -21,8 +21,9 @@ export default defineNuxtPlugin(() => {
 
     // P2P transport using y-webrtc compatible signaling servers
     const signalingServers = opts?.signaling ?? [
-      config.public.signalingServer, // Your Railway server
-      'wss://signaling.yjs.dev', // Fallback
+      config.public.signalingServer, // Your server (localhost or Railway)
+      // Fallback disabled for cleaner logs during local testing
+      // 'wss://signaling.yjs.dev',
     ]
     
     console.log('[yjs] Using signaling servers:', signalingServers)
