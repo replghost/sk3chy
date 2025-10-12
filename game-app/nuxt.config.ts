@@ -5,4 +5,9 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   modules: ['@nuxt/ui', '@wagmi/vue/nuxt'],
   ssr: false, // Enable SPA mode
+  runtimeConfig: {
+    public: {
+      signalingServer: process.env.NUXT_PUBLIC_SIGNALING_SERVER || 'ws://localhost:4444',
+    }
+  }
 })

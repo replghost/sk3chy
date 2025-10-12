@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "game-app"
+    "game-app",
+    "signaling-server"
   ],
   "scripts": {
     "dev": "bun --filter game-app dev",
+    "dev:signaling": "bun --filter signaling-server dev",
+    "start:signaling": "bun --filter signaling-server start",
     "build": "bun --filter game-app build",
     "preview": "bun --filter game-app preview"
   },

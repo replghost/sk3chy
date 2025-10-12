@@ -1,9 +1,11 @@
-import { defineNuxtPlugin } from '#app'
+import { defineNuxtPlugin, useRuntimeConfig } from '#app'
 import * as Y from 'yjs'
 import { WebrtcProvider } from 'y-webrtc'
 import { IndexeddbPersistence } from 'y-indexeddb'
 
 export default defineNuxtPlugin(() => {
+  const config = useRuntimeConfig()
+  
   // factory that builds a Yjs room on demand
   function createYRoom(roomId: string, opts?: {
     signaling?: string[]
@@ -14,10 +16,11 @@ export default defineNuxtPlugin(() => {
     // offline-first cache
     const idb = new IndexeddbPersistence(`yjs-${roomId}`, doc)
 
-    // P2P transport (use your own signaling servers in prod)
+    // P2P transport using local signaling server
     const provider = new WebrtcProvider(roomId, doc, {
       signaling: opts?.signaling ?? [
-        'wss://signaling.yjs.dev', // fine for demos; replace in prod
+        config.public.signalingServer, // Configured signaling server
+        'wss://signaling.yjs.dev', // Fallback for demos
       ],
       peerOpts: {
         config: {

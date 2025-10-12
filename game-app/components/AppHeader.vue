@@ -20,6 +20,10 @@
           
           <UDivider orientation="vertical" class="h-6 mx-2" />
           
+          <UButton variant="ghost" to="/test-signaling" size="sm" color="gray">
+            🔌 Test
+          </UButton>
+          
           <WalletConnect />
         </nav>
       </div>
