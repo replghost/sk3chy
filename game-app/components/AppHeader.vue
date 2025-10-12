@@ -6,23 +6,15 @@
           to="/" 
           class="text-xl font-bold text-neutral-900 dark:text-white hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
         >
-          Peers
+          Sk3chy
         </NuxtLink>
 
         <nav class="flex items-center gap-2">
-          <UButton variant="ghost" to="/" size="sm">Home</UButton>
+          <UButton variant="ghost" to="/game/1" size="sm" color="gray" :class="{ 'underline decoration-2 underline-offset-8': currentPath === '/game/1' }">Room 1</UButton>
+          <UButton variant="ghost" to="/game/2" size="sm" color="gray" :class="{ 'underline decoration-2 underline-offset-8': currentPath === '/game/2' }">Room 2</UButton>
+          <UButton variant="ghost" to="/game/3" size="sm" color="gray" :class="{ 'underline decoration-2 underline-offset-8': currentPath === '/game/3' }">Room 3</UButton>
           
           <UDivider orientation="vertical" class="h-6 mx-2" />
-          
-          <UButton variant="ghost" to="/game/1" size="sm">Room 1</UButton>
-          <UButton variant="ghost" to="/game/2" size="sm">Room 2</UButton>
-          <UButton variant="ghost" to="/game/3" size="sm">Room 3</UButton>
-          
-          <UDivider orientation="vertical" class="h-6 mx-2" />
-          
-          <UButton variant="ghost" to="/test-signaling" size="sm" color="gray">
-            🔌 Test
-          </UButton>
           
           <WalletConnect />
         </nav>
@@ -32,5 +24,6 @@
 </template>
 
 <script setup lang="ts">
-// Header component
+const route = useRoute()
+const currentPath = computed(() => route.path)
 </script>
