@@ -55,7 +55,13 @@ function resize() {
 
 function pointerPos(ev: PointerEvent) {
   const rect = canvas.value!.getBoundingClientRect()
-  return { x: ev.clientX - rect.left, y: ev.clientY - rect.top }
+  const x = ev.clientX - rect.left
+  const y = ev.clientY - rect.top
+  // Normalize to 0-1 range
+  return { 
+    x: x / rect.width, 
+    y: y / rect.height 
+  }
 }
 
 function onPointerDown(ev: PointerEvent) {
@@ -96,11 +102,14 @@ function onPointerUp() {
 
 function renderAll() {
   if (!ctx || !canvas.value) return
+  const w = canvas.value.width
+  const h = canvas.value.height
+  
   // Black background
   ctx.fillStyle = '#000000'
-  ctx.fillRect(0, 0, canvas.value.width, canvas.value.height)
+  ctx.fillRect(0, 0, w, h)
 
-  // Draw all committed strokes
+  // Draw all committed strokes (scale from normalized 0-1 to canvas size)
   for (const s of props.strokes) {
     const pts = s.points
     if (!pts?.length) continue
@@ -109,32 +118,34 @@ function renderAll() {
     ctx.lineCap = 'round'
     ctx.strokeStyle = s.color
     ctx.beginPath()
-    ctx.moveTo(pts[0].x, pts[0].y)
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y)
+    ctx.moveTo(pts[0].x * w, pts[0].y * h)
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(pts[i].x * w, pts[i].y * h)
+    }
     ctx.stroke()
   }
 
-  // Draw current stroke being drawn
+  // Draw current stroke being drawn (scale from normalized 0-1 to canvas size)
   if (drawing && currentStroke.length > 0) {
     ctx.lineWidth = props.brushSize
     ctx.lineJoin = 'round'
     ctx.lineCap = 'round'
     ctx.strokeStyle = props.brushColor
     ctx.beginPath()
-    ctx.moveTo(currentStroke[0].x, currentStroke[0].y)
+    ctx.moveTo(currentStroke[0].x * w, currentStroke[0].y * h)
     for (let i = 1; i < currentStroke.length; i++) {
-      ctx.lineTo(currentStroke[i].x, currentStroke[i].y)
+      ctx.lineTo(currentStroke[i].x * w, currentStroke[i].y * h)
     }
     ctx.stroke()
   }
 
-  // draw remote cursors
+  // draw remote cursors (scale from normalized 0-1 to canvas size)
   if (octx && overlay.value) {
     octx.clearRect(0, 0, overlay.value.width, overlay.value.height)
     for (const st of props.peers) {
       if (!st?.cursor) continue
       octx.beginPath()
-      octx.arc(st.cursor.x, st.cursor.y, 4, 0, Math.PI*2)
+      octx.arc(st.cursor.x * w, st.cursor.y * h, 4, 0, Math.PI*2)
       octx.fillStyle = st.color || '#0aa'
       octx.fill()
     }
