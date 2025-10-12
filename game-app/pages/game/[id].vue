@@ -329,15 +329,16 @@ function generatePreview() {
 // Generate preview when game finishes
 watch(() => gameState.value.status, (newStatus, oldStatus) => {
   if (newStatus === 'finished' && oldStatus !== 'finished') {
-    // Show modal immediately - don't wait for preview
+    // Show modal immediately
     showFinishModal.value = true
     
-    // Generate preview in background (optional)
-    if ('requestIdleCallback' in window) {
-      requestIdleCallback(() => generatePreview(), { timeout: 3000 })
-    } else {
-      setTimeout(() => generatePreview(), 1000)
-    }
+    // DISABLED: Preview generation causes page unresponsive on host
+    // TODO: Move to web worker or skip entirely
+    // if ('requestIdleCallback' in window) {
+    //   requestIdleCallback(() => generatePreview(), { timeout: 3000 })
+    // } else {
+    //   setTimeout(() => generatePreview(), 1000)
+    // }
   }
   
   // Reset modal flag when leaving finished state
@@ -751,12 +752,21 @@ onMounted(() => {
             </button>
           </div>
           
-          <!-- Loading placeholder while preview generates -->
+          <!-- Generate image button -->
           <div v-else class="flex-shrink-0 md:w-1/2 relative">
             <div class="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 h-64 md:h-full flex items-center justify-center">
-              <div class="text-center text-gray-400">
-                <div class="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
-                <p class="text-sm">Generating preview...</p>
+              <div class="text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <UButton 
+                  @click="generatePreview"
+                  color="primary"
+                  size="lg"
+                >
+                  Generate Image
+                </UButton>
+                <p class="text-xs text-gray-400 mt-2">Click to create downloadable image</p>
               </div>
             </div>
           </div>
