@@ -6,7 +6,7 @@
           to="/" 
           class="text-xl font-bold text-neutral-900 dark:text-white hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
         >
-          Sk3chy
+          sk3chy
         </NuxtLink>
 
         <nav class="flex items-center gap-2">
