@@ -93,12 +93,27 @@ export function useDrawingGame(roomId: string) {
   function start(roomOpts?: { signaling?: string[]; iceServers?: RTCIceServer[] }) {
     yroom = $createYRoom(roomId, roomOpts)
     
+    // Debug logging
+    console.log('[DrawingGame] Starting room:', roomId)
+    console.log('[DrawingGame] User ID:', userId.value)
+    
+    // Log provider connection status
+    yroom.provider.on('status', (event: any) => {
+      console.log('[DrawingGame] Provider status:', event.status)
+    })
+    
+    yroom.provider.on('peers', (event: any) => {
+      console.log('[DrawingGame] Connected peers:', event.webrtcPeers)
+      console.log('[DrawingGame] Total peers:', event.webrtcPeers.length)
+    })
+    
     const ygame = yroom.game
     
     // Initialize or load game state
     const existingHost = ygame.get('hostId')
     if (!existingHost) {
       // First user becomes host
+      console.log('[DrawingGame] No existing host, becoming host')
       ygame.set('hostId', userId.value)
       ygame.set('status', 'waiting')
       ygame.set('difficulty', 'medium')
@@ -106,6 +121,7 @@ export function useDrawingGame(roomId: string) {
       gameState.value.hostId = userId.value
     } else {
       // Load existing game state
+      console.log('[DrawingGame] Found existing host:', existingHost)
       syncGameState()
     }
 

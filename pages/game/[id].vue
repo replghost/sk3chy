@@ -350,8 +350,16 @@ watch(() => gameState.value.winnerId, (newWinnerId, oldWinnerId) => {
 
 onMounted(() => {
   start({
-    signaling: ['wss://signaling.yjs.dev'],
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    signaling: [
+      'wss://signaling.yjs.dev',
+      'wss://y-webrtc-signaling-eu.herokuapp.com',
+      'wss://y-webrtc-signaling-us.herokuapp.com'
+    ],
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' }
+    ]
   })
 })
 </script>
