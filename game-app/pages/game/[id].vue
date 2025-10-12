@@ -436,19 +436,19 @@ onMounted(() => {
             <span class="text-sm font-normal text-gray-500">{{ peers.length }}</span>
           </h2>
           
-          <div class="space-y-3">
+          <div class="grid grid-cols-2 gap-2 mb-6">
             <div 
               v-for="peer in peers" 
               :key="peer.id"
-              class="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-700 transition-all hover:scale-105"
+              class="flex items-center gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-700 transition-all hover:scale-105"
               :class="{ 'ring-2 ring-primary': peer.id === userId }"
             >
               <div 
-                class="w-10 h-10 rounded-full flex-shrink-0" 
+                class="w-8 h-8 rounded-full flex-shrink-0" 
                 :style="{ backgroundColor: peer.color || '#0aa' }"
               />
               <div class="flex-1 min-w-0">
-                <div class="font-semibold truncate">
+                <div class="text-sm font-semibold truncate">
                   {{ peer.displayName || 'Anonymous' }}
                   <span v-if="peer.id === userId" class="text-xs text-gray-500">(you)</span>
                 </div>
@@ -460,18 +460,18 @@ onMounted(() => {
             </div>
             
             <!-- Empty state -->
-            <div v-if="peers.length === 0" class="text-center py-8 text-gray-400">
+            <div v-if="peers.length === 0" class="col-span-2 text-center py-8 text-gray-400">
               <p>Waiting for players to join...</p>
             </div>
           </div>
 
           <!-- Your Name Input -->
-          <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+          <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
             <label class="block text-sm font-medium mb-2">Your Name</label>
             <UInput 
               v-model="displayName" 
               placeholder="Enter your name"
-              size="lg"
+              size="md"
               @update:model-value="setDisplayName"
             />
           </div>
@@ -579,8 +579,8 @@ onMounted(() => {
               >
                 🎮 Start Game
               </UButton>
-              <div v-else class="text-center p-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                <p class="text-gray-600 dark:text-gray-400">Waiting for host to start...</p>
+              <div v-else class="text-center p-4">
+                <p class="text-gray-500 dark:text-gray-400">Waiting for host to start...</p>
               </div>
             </div>
           </div>
