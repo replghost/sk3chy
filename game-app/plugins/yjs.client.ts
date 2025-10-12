@@ -17,11 +17,15 @@ export default defineNuxtPlugin(() => {
     const idb = new IndexeddbPersistence(`yjs-${roomId}`, doc)
 
     // P2P transport using y-webrtc compatible signaling servers
+    const signalingServers = opts?.signaling ?? [
+      config.public.signalingServer, // Your Railway server
+      'wss://signaling.yjs.dev', // Fallback
+    ]
+    
+    console.log('[yjs] Using signaling servers:', signalingServers)
+    
     const provider = new WebrtcProvider(roomId, doc, {
-      signaling: opts?.signaling ?? [
-        config.public.signalingServer, // Your Railway server
-        'wss://signaling.yjs.dev', // Fallback
-      ],
+      signaling: signalingServers,
       peerOpts: {
         config: {
           iceServers: opts?.iceServers ?? [
