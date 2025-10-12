@@ -15,6 +15,7 @@
     "@tanstack/vue-query": ">=5.45.0",
     "@wagmi/vue": "latest",
     "add": "^2.0.6",
+    "canvas-confetti": "^1.9.3",
     "crypto-hash": "^4.0.0",
     "nanoid": "^5.1.6",
     "nuxt": "^3.11.2",
@@ -26,5 +27,8 @@
     "y-protocols": "^1.0.6",
     "y-webrtc": "^10.3.0",
     "yjs": "^13.6.27"
+  },
+  "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0"
   }
 }
