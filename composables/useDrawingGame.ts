@@ -33,7 +33,8 @@ type GameState = {
   wordOptions: string[] | null
   difficulty: DifficultyLevel
   startTime: number | null
-  duration: number // in seconds
+  endTime: number | null  // When game actually ended
+  duration: number // in seconds (max time limit)
   winnerId: string | null
   winnerName: string | null
   commitmentVerified: boolean | null  // Verification result
@@ -62,6 +63,7 @@ export function useDrawingGame(roomId: string) {
     wordOptions: null,
     difficulty: 'medium',
     startTime: null,
+    endTime: null,
     duration: 180, // 3 minutes
     winnerId: null,
     winnerName: null,
@@ -185,6 +187,7 @@ export function useDrawingGame(roomId: string) {
       wordOptions: ygame.get('wordOptions') || null,
       difficulty: ygame.get('difficulty') || 'medium',
       startTime: ygame.get('startTime') || null,
+      endTime: ygame.get('endTime') || null,
       duration: ygame.get('duration') || 180,
       winnerId: ygame.get('winnerId') || null,
       winnerName: ygame.get('winnerName') || null,
@@ -297,6 +300,7 @@ export function useDrawingGame(roomId: string) {
       // Reveal phase: broadcast the word and salt so everyone can verify
       yroom.doc.transact(() => {
         yroom.game.set('status', 'finished')
+        yroom.game.set('endTime', Date.now()) // Record when game ended
         yroom.game.set('winnerId', winnerId)
         yroom.game.set('winnerName', winnerName)
         yroom.game.set('selectedWord', localSelectedWord) // Reveal the word
@@ -342,6 +346,7 @@ export function useDrawingGame(roomId: string) {
       yroom.game.set('wordSalt', null)
       yroom.game.set('wordOptions', null)
       yroom.game.set('startTime', null)
+      yroom.game.set('endTime', null)
       yroom.game.set('winnerId', null)
       yroom.game.set('winnerName', null)
       yroom.game.set('commitmentVerified', null)

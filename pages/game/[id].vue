@@ -20,6 +20,8 @@ const guessInput = ref('')
 const guessesContainer = ref<HTMLElement | null>(null)
 const selectedWordLocal = ref<string | null>(null) // Track selected word locally for UI
 const playersExpanded = ref(false) // Collapse players by default
+const canvasRef = ref<any>(null) // Reference to YCanvas component
+const exportedImageUrl = ref<string | null>(null) // Preview of exported PNG
 
 // Vibrant colors that pop on black background
 const drawingColors = [
@@ -65,6 +67,116 @@ const formattedTime = computed(() => {
 
 // Show countdown warning in last 10 seconds
 const showCountdownWarning = computed(() => timeRemaining.value <= 10 && timeRemaining.value > 0)
+
+// Calculate actual game duration (from start to end)
+const actualDuration = computed(() => {
+  if (!gameState.value.startTime || !gameState.value.endTime) return 0
+  return Math.floor((gameState.value.endTime - gameState.value.startTime) / 1000)
+})
+
+const formattedActualDuration = computed(() => {
+  const minutes = Math.floor(actualDuration.value / 60)
+  const seconds = actualDuration.value % 60
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+})
+
+// Download drawing as PNG
+function downloadDrawing() {
+  const canvas = canvasRef.value?.$el?.querySelector('canvas')
+  if (!canvas) return
+  
+  // Create high-res export canvas (2x scale for better text quality)
+  const scale = 2
+  const exportCanvas = document.createElement('canvas')
+  exportCanvas.width = canvas.width * scale
+  exportCanvas.height = canvas.height * scale
+  const ctx = exportCanvas.getContext('2d')
+  if (!ctx) return
+  
+  // Enable high-quality rendering
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  
+  // Scale context for high-res
+  ctx.scale(scale, scale)
+  
+  // Draw the original canvas
+  ctx.drawImage(canvas, 0, 0)
+  
+  // Reset scale for text rendering
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  
+  // Draw guesses on the right side (like in the game)
+  const guessX = exportCanvas.width - 20 * scale
+  const guessY = exportCanvas.height - 80 * scale
+  const recentGuesses = guesses.value.slice(-8) // Last 8 guesses
+  
+  ctx.textAlign = 'right'
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.8)'
+  ctx.shadowBlur = 8 * scale
+  
+  recentGuesses.forEach((guess, i) => {
+    const y = guessY - (recentGuesses.length - i - 1) * 20 * scale
+    const peer = peers.value.find(p => p.id === guess.by)
+    const color = peer?.color || '#fff'
+    
+    // Name
+    ctx.fillStyle = color
+    ctx.globalAlpha = 0.5
+    ctx.font = `${12 * scale}px sans-serif`
+    ctx.fillText(`${guess.displayName}:`, guessX, y)
+    
+    // Guess text
+    ctx.globalAlpha = 0.8
+    ctx.fillText(guess.text, guessX, y + 14 * scale)
+  })
+  
+  ctx.globalAlpha = 1
+  ctx.shadowBlur = 0
+  
+  // Add info bar at the bottom
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'
+  ctx.fillRect(0, exportCanvas.height - 120 * scale, exportCanvas.width, 120 * scale)
+  
+  ctx.fillStyle = 'white'
+  ctx.textAlign = 'center'
+  ctx.font = `bold ${32 * scale}px sans-serif`
+  ctx.fillText(`Word: ${gameState.value.selectedWord}`, exportCanvas.width / 2, exportCanvas.height - 70 * scale)
+  
+  if (gameState.value.winnerId) {
+    ctx.font = `${24 * scale}px sans-serif`
+    ctx.fillText(`🎉 Winner: ${gameState.value.winnerName}`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
+  } else {
+    ctx.font = `${20 * scale}px sans-serif`
+    ctx.fillStyle = '#aaa'
+    ctx.fillText(`Time's up - No winner`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
+  }
+  
+  // Convert to blob and create preview
+  exportCanvas.toBlob((blob) => {
+    if (!blob) return
+    const url = URL.createObjectURL(blob)
+    
+    // Set preview
+    if (exportedImageUrl.value) {
+      URL.revokeObjectURL(exportedImageUrl.value)
+    }
+    exportedImageUrl.value = url
+    
+    // Download
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `drawing-${gameState.value.selectedWord}-${Date.now()}.png`
+    a.click()
+  }, 'image/png', 0.95) // High quality PNG
+}
+
+// Generate preview when game finishes
+watch(() => gameState.value.status, (newStatus) => {
+  if (newStatus === 'finished') {
+    setTimeout(() => downloadDrawing(), 500) // Small delay to ensure canvas is ready
+  }
+})
 
 // Trigger confetti when someone wins
 watch(() => gameState.value.winnerId, (newWinnerId, oldWinnerId) => {
@@ -290,25 +402,6 @@ onMounted(() => {
           </UButton>
         </template>
 
-        <!-- Game Finished -->
-        <template v-if="gameState.status === 'finished'">
-          <div class="bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded">
-            <span class="font-semibold">{{ gameState.selectedWord }}</span>
-            <span v-if="gameState.winnerId" class="ml-2 text-green-600 dark:text-green-400">
-              🎉 {{ gameState.winnerName }}
-            </span>
-            <span v-else class="ml-2 text-gray-600 dark:text-gray-400">⏰ Time's up</span>
-            <span v-if="gameState.commitmentVerified" class="ml-2 text-green-600 dark:text-green-400 text-xs">✓</span>
-            <span v-else-if="gameState.commitmentVerified === false" class="ml-2 text-red-600 dark:text-red-400 text-xs">✗</span>
-          </div>
-          <UButton
-            @click="() => { resetGame(); selectedWordLocal = null }"
-            color="primary"
-            size="xs"
-          >
-            New Game
-          </UButton>
-        </template>
 
         <!-- Waiting messages -->
         <span v-if="!isHost && gameState.status === 'waiting'" class="text-gray-500 text-xs">
@@ -319,9 +412,79 @@ onMounted(() => {
         </span>
     </div>
 
+    <!-- Game Finished Modal -->
+    <div v-if="gameState.status === 'finished'" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-4xl w-full p-4 md:p-6">
+        <!-- Responsive Layout: Horizontal on desktop, Vertical on mobile -->
+        <div class="flex flex-col md:flex-row gap-4 md:gap-6">
+          <!-- PNG Preview -->
+          <div v-if="exportedImageUrl" class="flex-shrink-0 md:w-1/2 relative">
+            <div class="rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700">
+              <img :src="exportedImageUrl" alt="Drawing" class="w-full h-auto" />
+            </div>
+            <!-- Download button overlay -->
+            <button
+              @click="downloadDrawing"
+              class="absolute top-2 right-2 p-2 bg-black/60 hover:bg-black/80 backdrop-blur-sm rounded-lg transition-all"
+              title="Download PNG"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            </button>
+          </div>
+          
+          <!-- Info Panel -->
+          <div class="flex-1 flex flex-col justify-between">
+            <div>
+              <h2 class="text-2xl md:text-3xl font-bold mb-3">Game Over!</h2>
+              
+              <div class="space-y-3">
+                <div>
+                  <p class="text-gray-600 dark:text-gray-400 text-xs mb-1">The word was:</p>
+                  <p class="text-2xl md:text-3xl font-bold text-primary">{{ gameState.selectedWord }}</p>
+                </div>
+                
+                <div v-if="gameState.winnerId" class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
+                  <p class="text-lg mb-1">🎉</p>
+                  <p class="font-semibold text-green-700 dark:text-green-400 text-sm">Winner: {{ gameState.winnerName }}</p>
+                </div>
+                <div v-else class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                  <p class="text-lg mb-1">⏰</p>
+                  <p class="text-gray-600 dark:text-gray-400 text-sm">Time's up! No one guessed it.</p>
+                </div>
+                
+                <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                  <span>Duration: {{ formattedActualDuration }}</span>
+                  
+                  <!-- Verification Badge -->
+                  <div v-if="gameState.commitmentVerified !== null" class="inline-flex items-center gap-1 px-2 py-1 rounded-full" :class="gameState.commitmentVerified ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'">
+                    <span>{{ gameState.commitmentVerified ? '✓' : '✗' }}</span>
+                    <span>{{ gameState.commitmentVerified ? 'Verified' : 'Failed' }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="mt-4">
+              <UButton
+                @click="() => { resetGame(); selectedWordLocal = null }"
+                color="primary"
+                size="sm"
+                class="w-full"
+              >
+                New Game
+              </UButton>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Canvas with overlay -->
     <div v-if="gameState.status === 'playing' || gameState.status === 'finished'" class="relative">
       <YCanvas
+        ref="canvasRef"
         v-if="ready"
         :strokes="strokes"
         :peers="peers"
