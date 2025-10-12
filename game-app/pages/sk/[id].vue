@@ -52,8 +52,7 @@ watch(guesses, () => {
 
 onMounted(() => {
   start({
-    // In prod, use your own signaling & TURN here
-    signaling: ['wss://signaling.yjs.dev'],
+    // Signaling servers configured in nuxt.config.ts via NUXT_PUBLIC_SIGNALING_SERVER
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   })
 })

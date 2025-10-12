@@ -45,6 +45,7 @@ const send = (conn, message) => {
  * @param {any} conn
  */
 const onconnection = conn => {
+  console.log('✅ Client connected')
   /**
    * @type {Set<string>}
    */
@@ -69,6 +70,7 @@ const onconnection = conn => {
     pongReceived = true
   })
   conn.on('close', () => {
+    console.log('❌ Client disconnected')
     subscribedTopics.forEach(topicName => {
       const subs = topics.get(topicName) || new Set()
       subs.delete(conn)
@@ -93,6 +95,7 @@ const onconnection = conn => {
               topic.add(conn)
               // add topic to conn
               subscribedTopics.add(topicName)
+              console.log(`📢 Client subscribed to topic: ${topicName}. Topic size: ${topic.size}`)
             }
           })
           break

@@ -6,6 +6,9 @@ import { IndexeddbPersistence } from 'y-indexeddb'
 export default defineNuxtPlugin(() => {
   const config = useRuntimeConfig()
   
+  console.log('[yjs] Runtime config:', config.public)
+  console.log('[yjs] Signaling server from config:', config.public.signalingServer)
+  
   // factory that builds a Yjs room on demand
   function createYRoom(roomId: string, opts?: {
     signaling?: string[]
@@ -23,6 +26,7 @@ export default defineNuxtPlugin(() => {
     ]
     
     console.log('[yjs] Using signaling servers:', signalingServers)
+    console.log('[yjs] Creating WebrtcProvider for room:', roomId)
     
     const provider = new WebrtcProvider(roomId, doc, {
       signaling: signalingServers,

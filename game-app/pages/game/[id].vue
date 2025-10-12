@@ -350,15 +350,10 @@ watch(() => gameState.value.winnerId, (newWinnerId, oldWinnerId) => {
 
 onMounted(() => {
   start({
-    signaling: [
-      'wss://signaling.yjs.dev',
-      'wss://y-webrtc-signaling-eu.herokuapp.com',
-      'wss://y-webrtc-signaling-us.herokuapp.com'
-    ],
+    // Signaling servers configured in nuxt.config.ts via NUXT_PUBLIC_SIGNALING_SERVER
+    // No need to pass signaling here - will use config defaults
     iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' }
+      { urls: 'stun:stun.l.google.com:19302' }
     ]
   })
 })
