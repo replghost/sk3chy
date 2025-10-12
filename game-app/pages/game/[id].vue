@@ -411,7 +411,180 @@ onMounted(() => {
 </style>
 
 <template>
-  <section class="p-3 space-y-2">
+  <!-- Full-screen Lobby for Waiting State -->
+  <div v-if="gameState.status === 'waiting'" class="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 p-6">
+    <div class="max-w-6xl mx-auto">
+      <!-- Header -->
+      <div class="text-center mb-8">
+        <h1 class="text-4xl font-bold mb-2">🎨 Drawing Game Lobby</h1>
+        <p class="text-gray-600 dark:text-gray-400">Room: {{ roomId }}</p>
+      </div>
+
+      <!-- Two Column Layout -->
+      <div class="grid md:grid-cols-2 gap-6">
+        <!-- Left: Players List -->
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
+          <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+            <span>👥</span>
+            <span>Players</span>
+            <span class="text-sm font-normal text-gray-500">{{ peers.length }}</span>
+          </h2>
+          
+          <div class="space-y-3">
+            <div 
+              v-for="peer in peers" 
+              :key="peer.id"
+              class="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-700 transition-all hover:scale-105"
+              :class="{ 'ring-2 ring-primary': peer.id === userId }"
+            >
+              <div 
+                class="w-10 h-10 rounded-full flex-shrink-0" 
+                :style="{ backgroundColor: peer.color || '#0aa' }"
+              />
+              <div class="flex-1 min-w-0">
+                <div class="font-semibold truncate">
+                  {{ peer.displayName || 'Anonymous' }}
+                  <span v-if="peer.id === userId" class="text-xs text-gray-500">(you)</span>
+                </div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">
+                  <span v-if="peer.id === gameState.hostId">🎨 Host</span>
+                  <span v-else>👀 Player</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Empty state -->
+            <div v-if="peers.length === 0" class="text-center py-8 text-gray-400">
+              <p>Waiting for players to join...</p>
+            </div>
+          </div>
+
+          <!-- Your Name Input -->
+          <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <label class="block text-sm font-medium mb-2">Your Name</label>
+            <UInput 
+              v-model="displayName" 
+              placeholder="Enter your name"
+              size="lg"
+              @update:model-value="setDisplayName"
+            />
+          </div>
+        </div>
+
+        <!-- Right: Game Settings -->
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
+          <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+            <span>⚙️</span>
+            <span>Game Settings</span>
+            <span v-if="!isHost" class="text-sm font-normal text-gray-500">(Host only)</span>
+          </h2>
+
+          <div class="space-y-6">
+            <!-- Difficulty -->
+            <div>
+              <label class="block text-sm font-medium mb-3">Difficulty</label>
+              <div class="flex gap-2">
+                <button
+                  v-for="diff in difficulties"
+                  :key="diff"
+                  @click="isHost && setDifficulty(diff)"
+                  :disabled="!isHost"
+                  class="flex-1 py-3 px-2 rounded-lg font-medium transition-all text-sm"
+                  :class="[
+                    gameState.difficulty === diff 
+                      ? 'bg-primary text-white shadow-lg scale-105' 
+                      : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600',
+                    !isHost && 'cursor-not-allowed opacity-60'
+                  ]"
+                >
+                  {{ diff }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Duration -->
+            <div>
+              <label class="block text-sm font-medium mb-3">Time Limit</label>
+              <div class="flex gap-2">
+                <button
+                  @click="isHost && setDuration(20)"
+                  :disabled="!isHost"
+                  class="flex-1 py-3 px-2 rounded-lg font-medium transition-all text-sm"
+                  :class="[
+                    gameState.duration === 20 
+                      ? 'bg-primary text-white shadow-lg scale-105' 
+                      : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600',
+                    !isHost && 'cursor-not-allowed opacity-60'
+                  ]"
+                >
+                  20s
+                </button>
+                <button
+                  @click="isHost && setDuration(60)"
+                  :disabled="!isHost"
+                  class="flex-1 py-3 px-2 rounded-lg font-medium transition-all text-sm"
+                  :class="[
+                    gameState.duration === 60 
+                      ? 'bg-primary text-white shadow-lg scale-105' 
+                      : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600',
+                    !isHost && 'cursor-not-allowed opacity-60'
+                  ]"
+                >
+                  1m
+                </button>
+                <button
+                  @click="isHost && setDuration(180)"
+                  :disabled="!isHost"
+                  class="flex-1 py-3 px-2 rounded-lg font-medium transition-all text-sm"
+                  :class="[
+                    gameState.duration === 180 
+                      ? 'bg-primary text-white shadow-lg scale-105' 
+                      : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600',
+                    !isHost && 'cursor-not-allowed opacity-60'
+                  ]"
+                >
+                  3m
+                </button>
+                <button
+                  @click="isHost && setDuration(300)"
+                  :disabled="!isHost"
+                  class="flex-1 py-3 px-2 rounded-lg font-medium transition-all text-sm"
+                  :class="[
+                    gameState.duration === 300 
+                      ? 'bg-primary text-white shadow-lg scale-105' 
+                      : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600',
+                    !isHost && 'cursor-not-allowed opacity-60'
+                  ]"
+                >
+                  5m
+                </button>
+              </div>
+            </div>
+
+            <!-- Start Button -->
+            <div class="pt-4">
+              <UButton 
+                v-if="isHost"
+                @click="generateWordOptions"
+                color="primary"
+                size="xl"
+                block
+                class="font-bold text-lg"
+              >
+                🎮 Start Game
+              </UButton>
+              <div v-else class="text-center p-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                <p class="text-gray-600 dark:text-gray-400">Waiting for host to start...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game UI (for other states) -->
+  <section v-else class="p-3 space-y-2">
     <!-- Compact header -->
     <div class="flex items-center justify-between gap-4">
       <div class="flex items-center gap-3 flex-1 min-w-0">
@@ -484,61 +657,6 @@ onMounted(() => {
 
     <!-- Compact controls row -->
     <div class="flex items-center gap-2 flex-wrap text-xs">
-        <!-- Host Controls - Waiting State -->
-        <template v-if="isHost && gameState.status === 'waiting'">
-          <span class="text-gray-600 dark:text-gray-400">Difficulty:</span>
-          <UButton
-            v-for="diff in difficulties"
-            :key="diff"
-            @click="setDifficulty(diff)"
-            :color="gameState.difficulty === diff ? 'primary' : 'gray'"
-            :variant="gameState.difficulty === diff ? 'solid' : 'soft'"
-            size="xs"
-          >
-            {{ diff }}
-          </UButton>
-          <span class="text-gray-600 dark:text-gray-400 ml-2">Time:</span>
-          <UButton
-            @click="setDuration(20)"
-            :color="gameState.duration === 20 ? 'primary' : 'gray'"
-            :variant="gameState.duration === 20 ? 'solid' : 'soft'"
-            size="xs"
-          >
-            20s
-          </UButton>
-          <UButton
-            @click="setDuration(60)"
-            :color="gameState.duration === 60 ? 'primary' : 'gray'"
-            :variant="gameState.duration === 60 ? 'solid' : 'soft'"
-            size="xs"
-          >
-            1m
-          </UButton>
-          <UButton
-            @click="setDuration(180)"
-            :color="gameState.duration === 180 ? 'primary' : 'gray'"
-            :variant="gameState.duration === 180 ? 'solid' : 'soft'"
-            size="xs"
-          >
-            3m
-          </UButton>
-          <UButton
-            @click="setDuration(300)"
-            :color="gameState.duration === 300 ? 'primary' : 'gray'"
-            :variant="gameState.duration === 300 ? 'solid' : 'soft'"
-            size="xs"
-          >
-            5m
-          </UButton>
-          <UButton 
-            @click="generateWordOptions"
-            color="primary"
-            size="xs"
-            class="ml-2"
-          >
-            Start Game
-          </UButton>
-        </template>
 
         <!-- Host Controls - Word Selection -->
         <template v-if="isHost && gameState.status === 'selecting'">
