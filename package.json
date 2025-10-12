@@ -15,6 +15,7 @@
     "@tanstack/vue-query": ">=5.45.0",
     "@wagmi/vue": "latest",
     "add": "^2.0.6",
+    "crypto-hash": "^4.0.0",
     "nanoid": "^5.1.6",
     "nuxt": "^3.11.2",
     "uuid": "^13.0.0",

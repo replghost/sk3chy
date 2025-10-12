@@ -8,6 +8,7 @@
         "@tanstack/vue-query": ">=5.45.0",
         "@wagmi/vue": "latest",
         "add": "^2.0.6",
+        "crypto-hash": "^4.0.0",
         "nanoid": "^5.1.6",
         "nuxt": "^3.11.2",
         "uuid": "^13.0.0",
@@ -843,6 +844,8 @@
     "cross-spawn": ["cross-spawn@7.0.6", "", { "dependencies": { "path-key": "^3.1.0", "shebang-command": "^2.0.0", "which": "^2.0.1" } }, "sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA=="],
 
     "crossws": ["crossws@0.3.5", "", { "dependencies": { "uncrypto": "^0.1.3" } }, "sha512-ojKiDvcmByhwa8YYqbQI/hg7MEU0NC03+pSdEq4ZUnZR9xXpwk7E43SMNGkn+JxJGPFtNvQ48+vV2p+P1ml5PA=="],
+
+    "crypto-hash": ["crypto-hash@4.0.0", "", {}, "sha512-KkkFriWj2teXIJOmftIRavBL4q8A7EZV24Nn9sWhIR4hdeS8u+q2A2p0tWZ1m4xVoP1zs3VJjVwwAUnztBb8uw=="],
 
     "css-declaration-sorter": ["css-declaration-sorter@7.3.0", "", { "peerDependencies": { "postcss": "^8.0.9" } }, "sha512-LQF6N/3vkAMYF4xoHLJfG718HRJh34Z8BnNhd6bosOMIVjMlhuZK5++oZa3uYAgrI5+7x2o27gUqTR2U/KjUOQ=="],
 
