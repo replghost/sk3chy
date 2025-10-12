@@ -1,11 +1,8 @@
 [phases.setup]
-nixPkgs = ['bun']
+nixPkgs = ['nodejs']
 
 [phases.install]
-cmds = ['bun install']
-
-[phases.build]
-cmds = ['bun build src/index.ts --outdir dist --target bun']
+cmds = ['npm install']
 
 [start]
-cmd = 'bun start'
+cmd = 'npm start'
