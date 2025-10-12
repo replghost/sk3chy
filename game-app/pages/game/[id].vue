@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
 import { ref, onMounted, watch, computed } from 'vue'
+import { useRuntimeConfig } from '#app'
 import confetti from 'canvas-confetti'
 import YCanvas from '~/components/YCanvas.vue'
 import { useDrawingGame } from '~/composables/useDrawingGame'
 import { getAllDifficulties, type DifficultyLevel } from '~/utils/wordDictionary'
 
+const config = useRuntimeConfig()
 const route = useRoute()
 const roomId = `game-${String(route.params.id)}`
 
@@ -349,13 +351,31 @@ watch(() => gameState.value.winnerId, (newWinnerId, oldWinnerId) => {
 })
 
 onMounted(() => {
-  start({
-    // Signaling servers configured in nuxt.config.ts via NUXT_PUBLIC_SIGNALING_SERVER
-    // No need to pass signaling here - will use config defaults
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' }
+  // Build ICE servers array
+  const iceServers: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' }
+  ]
+
+  // Add TURN servers if credentials are configured
+  if (config.public.turnUsername && config.public.turnCredential) {
+    const turnServers = [
+      { urls: 'turn:a.relay.metered.ca:80' },
+      { urls: 'turn:a.relay.metered.ca:80?transport=tcp' },
+      { urls: 'turn:a.relay.metered.ca:443' },
+      { urls: 'turn:a.relay.metered.ca:443?transport=tcp' }
     ]
-  })
+    
+    turnServers.forEach(server => {
+      iceServers.push({
+        ...server,
+        username: config.public.turnUsername,
+        credential: config.public.turnCredential
+      })
+    })
+  }
+
+  start({ iceServers })
 })
 </script>
 

@@ -8,6 +8,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       signalingServer: process.env.NUXT_PUBLIC_SIGNALING_SERVER || 'ws://localhost:4444',
+      turnUsername: process.env.NUXT_PUBLIC_TURN_USERNAME || '',
+      turnCredential: process.env.NUXT_PUBLIC_TURN_CREDENTIAL || '',
     }
   }
 })
