@@ -22,6 +22,7 @@ const selectedWordLocal = ref<string | null>(null) // Track selected word locall
 const playersExpanded = ref(false) // Collapse players by default
 const canvasRef = ref<any>(null) // Reference to YCanvas component
 const exportedImageUrl = ref<string | null>(null) // Preview of exported PNG
+const showFinishModal = ref(false) // Control modal visibility separately
 
 // Vibrant colors that pop on black background
 const drawingColors = [
@@ -85,11 +86,14 @@ function downloadDrawing() {
   const canvas = canvasRef.value?.$el?.querySelector('canvas')
   if (!canvas) return
   
-  // Create high-res export canvas (2x scale for better text quality)
-  const scale = 2
+  // Use fixed dimensions for consistent output across devices
+  const fixedWidth = 1200
+  const fixedHeight = 900
+  const scale = 2 // For high-res text
+  
   const exportCanvas = document.createElement('canvas')
-  exportCanvas.width = canvas.width * scale
-  exportCanvas.height = canvas.height * scale
+  exportCanvas.width = fixedWidth * scale
+  exportCanvas.height = fixedHeight * scale
   const ctx = exportCanvas.getContext('2d')
   if (!ctx) return
   
@@ -97,18 +101,30 @@ function downloadDrawing() {
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
   
-  // Scale context for high-res
-  ctx.scale(scale, scale)
+  // Draw the original canvas scaled to fit
+  const aspectRatio = canvas.width / canvas.height
+  const targetAspectRatio = fixedWidth / fixedHeight
   
-  // Draw the original canvas
-  ctx.drawImage(canvas, 0, 0)
+  let drawWidth = fixedWidth * scale
+  let drawHeight = fixedHeight * scale
+  let offsetX = 0
+  let offsetY = 0
   
-  // Reset scale for text rendering
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  if (aspectRatio > targetAspectRatio) {
+    drawHeight = (fixedWidth / aspectRatio) * scale
+    offsetY = (fixedHeight * scale - drawHeight) / 2
+  } else {
+    drawWidth = (fixedHeight * aspectRatio) * scale
+    offsetX = (fixedWidth * scale - drawWidth) / 2
+  }
   
-  // Draw guesses on the right side (like in the game)
-  const guessX = exportCanvas.width - 20 * scale
-  const guessY = exportCanvas.height - 80 * scale
+  ctx.fillStyle = '#000000'
+  ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
+  ctx.drawImage(canvas, offsetX, offsetY, drawWidth, drawHeight)
+  
+  // Draw guesses on the right side (wider area for less wrapping)
+  const guessX = exportCanvas.width - 60 * scale
+  const guessY = exportCanvas.height - 160 * scale
   const recentGuesses = guesses.value.slice(-8) // Last 8 guesses
   
   ctx.textAlign = 'right'
@@ -116,19 +132,25 @@ function downloadDrawing() {
   ctx.shadowBlur = 8 * scale
   
   recentGuesses.forEach((guess, i) => {
-    const y = guessY - (recentGuesses.length - i - 1) * 20 * scale
+    const y = guessY - (recentGuesses.length - i - 1) * 24 * scale
     const peer = peers.value.find(p => p.id === guess.by)
     const color = peer?.color || '#fff'
     
-    // Name
+    // Name on left, guess on right
     ctx.fillStyle = color
     ctx.globalAlpha = 0.5
-    ctx.font = `${12 * scale}px sans-serif`
-    ctx.fillText(`${guess.displayName}:`, guessX, y)
+    ctx.font = `${14 * scale}px sans-serif`
+    const nameText = `${guess.displayName}:`
+    const nameWidth = ctx.measureText(nameText).width
     
-    // Guess text
+    // Draw name (right-aligned at guessX)
+    ctx.fillText(nameText, guessX, y)
+    
+    // Draw guess text (right-aligned, to the left of name)
     ctx.globalAlpha = 0.8
-    ctx.fillText(guess.text, guessX, y + 14 * scale)
+    ctx.font = `${14 * scale}px sans-serif`
+    const guessWidth = ctx.measureText(guess.text).width
+    ctx.fillText(guess.text, guessX - nameWidth - 8 * scale - guessWidth, y)
   })
   
   ctx.globalAlpha = 1
@@ -141,7 +163,7 @@ function downloadDrawing() {
   ctx.fillStyle = 'white'
   ctx.textAlign = 'center'
   ctx.font = `bold ${32 * scale}px sans-serif`
-  ctx.fillText(`Word: ${gameState.value.selectedWord}`, exportCanvas.width / 2, exportCanvas.height - 70 * scale)
+  ctx.fillText(`"${gameState.value.selectedWord}"`, exportCanvas.width / 2, exportCanvas.height - 70 * scale)
   
   if (gameState.value.winnerId) {
     ctx.font = `${24 * scale}px sans-serif`
@@ -152,7 +174,7 @@ function downloadDrawing() {
     ctx.fillText(`Time's up - No winner`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
   }
   
-  // Convert to blob and create preview
+  // Convert to blob and create preview/download
   exportCanvas.toBlob((blob) => {
     if (!blob) return
     const url = URL.createObjectURL(blob)
@@ -171,10 +193,125 @@ function downloadDrawing() {
   }, 'image/png', 0.95) // High quality PNG
 }
 
+// Generate preview (not download) when game finishes
+function generatePreview() {
+  const canvas = canvasRef.value?.$el?.querySelector('canvas')
+  if (!canvas) return
+  
+  // Use fixed dimensions for consistent output across devices
+  const fixedWidth = 1200
+  const fixedHeight = 900
+  const scale = 2 // For high-res text
+  
+  const exportCanvas = document.createElement('canvas')
+  exportCanvas.width = fixedWidth * scale
+  exportCanvas.height = fixedHeight * scale
+  const ctx = exportCanvas.getContext('2d')
+  if (!ctx) return
+  
+  // Enable high-quality rendering
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  
+  // Draw the original canvas scaled to fit
+  const aspectRatio = canvas.width / canvas.height
+  const targetAspectRatio = fixedWidth / fixedHeight
+  
+  let drawWidth = fixedWidth * scale
+  let drawHeight = fixedHeight * scale
+  let offsetX = 0
+  let offsetY = 0
+  
+  if (aspectRatio > targetAspectRatio) {
+    drawHeight = (fixedWidth / aspectRatio) * scale
+    offsetY = (fixedHeight * scale - drawHeight) / 2
+  } else {
+    drawWidth = (fixedHeight * aspectRatio) * scale
+    offsetX = (fixedWidth * scale - drawWidth) / 2
+  }
+  
+  ctx.fillStyle = '#000000'
+  ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
+  ctx.drawImage(canvas, offsetX, offsetY, drawWidth, drawHeight)
+  
+  // Draw guesses on the right side (wider area for less wrapping)
+  const guessX = exportCanvas.width - 60 * scale
+  const guessY = exportCanvas.height - 160 * scale
+  const recentGuesses = guesses.value.slice(-8) // Last 8 guesses
+  
+  ctx.textAlign = 'right'
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.8)'
+  ctx.shadowBlur = 8 * scale
+  
+  recentGuesses.forEach((guess, i) => {
+    const y = guessY - (recentGuesses.length - i - 1) * 24 * scale
+    const peer = peers.value.find(p => p.id === guess.by)
+    const color = peer?.color || '#fff'
+    
+    // Name on left, guess on right
+    ctx.fillStyle = color
+    ctx.globalAlpha = 0.5
+    ctx.font = `${14 * scale}px sans-serif`
+    const nameText = `${guess.displayName}:`
+    const nameWidth = ctx.measureText(nameText).width
+    
+    // Draw name (right-aligned at guessX)
+    ctx.fillText(nameText, guessX, y)
+    
+    // Draw guess text (right-aligned, to the left of name)
+    ctx.globalAlpha = 0.8
+    ctx.font = `${14 * scale}px sans-serif`
+    const guessWidth = ctx.measureText(guess.text).width
+    ctx.fillText(guess.text, guessX - nameWidth - 8 * scale - guessWidth, y)
+  })
+  
+  ctx.globalAlpha = 1
+  ctx.shadowBlur = 0
+  
+  // Add info bar at the bottom
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'
+  ctx.fillRect(0, exportCanvas.height - 120 * scale, exportCanvas.width, 120 * scale)
+  
+  ctx.fillStyle = 'white'
+  ctx.textAlign = 'center'
+  ctx.font = `bold ${32 * scale}px sans-serif`
+  ctx.fillText(`"${gameState.value.selectedWord}"`, exportCanvas.width / 2, exportCanvas.height - 70 * scale)
+  
+  if (gameState.value.winnerId) {
+    ctx.font = `${24 * scale}px sans-serif`
+    ctx.fillText(`🎉 Winner: ${gameState.value.winnerName}`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
+  } else {
+    ctx.font = `${20 * scale}px sans-serif`
+    ctx.fillStyle = '#aaa'
+    ctx.fillText(`Time's up - No winner`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
+  }
+  
+  // Convert to blob and create preview only (no download)
+  exportCanvas.toBlob((blob) => {
+    if (!blob) return
+    const url = URL.createObjectURL(blob)
+    
+    // Set preview
+    if (exportedImageUrl.value) {
+      URL.revokeObjectURL(exportedImageUrl.value)
+    }
+    exportedImageUrl.value = url
+    
+    // Show modal now that preview is ready
+    showFinishModal.value = true
+  }, 'image/png', 0.95)
+}
+
 // Generate preview when game finishes
-watch(() => gameState.value.status, (newStatus) => {
-  if (newStatus === 'finished') {
-    setTimeout(() => downloadDrawing(), 500) // Small delay to ensure canvas is ready
+watch(() => gameState.value.status, (newStatus, oldStatus) => {
+  if (newStatus === 'finished' && oldStatus !== 'finished') {
+    showFinishModal.value = false // Hide modal initially
+    setTimeout(() => generatePreview(), 500) // Small delay to ensure canvas is ready
+  }
+  
+  // Reset modal flag when leaving finished state
+  if (oldStatus === 'finished' && newStatus !== 'finished') {
+    showFinishModal.value = false
   }
 })
 
@@ -413,14 +550,25 @@ onMounted(() => {
     </div>
 
     <!-- Game Finished Modal -->
-    <div v-if="gameState.status === 'finished'" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-4xl w-full p-4 md:p-6">
+    <div v-if="showFinishModal && gameState.status === 'finished'" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 md:p-4" @click.self="() => { resetGame(); selectedWordLocal = null; showFinishModal = false }">
+      <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-4xl w-full max-h-[95vh] md:max-h-none overflow-y-auto p-3 md:p-6 relative">
+        <!-- Close button (mobile only) -->
+        <button
+          @click="() => { resetGame(); selectedWordLocal = null; showFinishModal = false }"
+          class="md:hidden absolute top-2 right-2 p-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-full transition-colors z-10"
+          title="Close"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        
         <!-- Responsive Layout: Horizontal on desktop, Vertical on mobile -->
-        <div class="flex flex-col md:flex-row gap-4 md:gap-6">
+        <div class="flex flex-col md:flex-row gap-3 md:gap-6">
           <!-- PNG Preview -->
           <div v-if="exportedImageUrl" class="flex-shrink-0 md:w-1/2 relative">
-            <div class="rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700">
-              <img :src="exportedImageUrl" alt="Drawing" class="w-full h-auto" />
+            <div class="rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700 max-h-[40vh] md:max-h-none">
+              <img :src="exportedImageUrl" alt="Drawing" class="w-full h-full object-contain md:object-cover" />
             </div>
             <!-- Download button overlay -->
             <button
@@ -435,45 +583,44 @@ onMounted(() => {
           </div>
           
           <!-- Info Panel -->
-          <div class="flex-1 flex flex-col justify-between">
+          <div class="flex-1 flex flex-col justify-between min-h-0">
             <div>
-              <h2 class="text-2xl md:text-3xl font-bold mb-3">Game Over!</h2>
+              <h2 class="text-xl md:text-3xl font-bold mb-2 md:mb-3">Game Over!</h2>
               
-              <div class="space-y-3">
+              <div class="space-y-2 md:space-y-3">
                 <div>
                   <p class="text-gray-600 dark:text-gray-400 text-xs mb-1">The word was:</p>
-                  <p class="text-2xl md:text-3xl font-bold text-primary">{{ gameState.selectedWord }}</p>
+                  <p class="text-xl md:text-3xl font-bold text-primary">{{ gameState.selectedWord }}</p>
                 </div>
                 
-                <div v-if="gameState.winnerId" class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
-                  <p class="text-lg mb-1">🎉</p>
-                  <p class="font-semibold text-green-700 dark:text-green-400 text-sm">Winner: {{ gameState.winnerName }}</p>
+                <div v-if="gameState.winnerId" class="bg-green-50 dark:bg-green-900/20 rounded-lg p-2 md:p-3">
+                  <p class="text-base md:text-lg mb-1">🎉</p>
+                  <p class="font-semibold text-green-700 dark:text-green-400 text-xs md:text-sm">Winner: {{ gameState.winnerName }}</p>
                 </div>
-                <div v-else class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-                  <p class="text-lg mb-1">⏰</p>
-                  <p class="text-gray-600 dark:text-gray-400 text-sm">Time's up! No one guessed it.</p>
+                <div v-else class="bg-gray-50 dark:bg-gray-800 rounded-lg p-2 md:p-3">
+                  <p class="text-base md:text-lg mb-1">⏰</p>
+                  <p class="text-gray-600 dark:text-gray-400 text-xs md:text-sm">Time's up! No one guessed it.</p>
                 </div>
                 
-                <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                <div class="flex items-center gap-2 md:gap-3 text-xs text-gray-500 dark:text-gray-400">
                   <span>Duration: {{ formattedActualDuration }}</span>
                   
                   <!-- Verification Badge -->
                   <div v-if="gameState.commitmentVerified !== null" class="inline-flex items-center gap-1 px-2 py-1 rounded-full" :class="gameState.commitmentVerified ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'">
                     <span>{{ gameState.commitmentVerified ? '✓' : '✗' }}</span>
-                    <span>{{ gameState.commitmentVerified ? 'Verified' : 'Failed' }}</span>
+                    <span class="hidden md:inline">{{ gameState.commitmentVerified ? 'Verified' : 'Failed' }}</span>
                   </div>
                 </div>
               </div>
             </div>
             
-            <div class="mt-4">
+            <div class="mt-3 md:mt-4 flex justify-center">
               <UButton
-                @click="() => { resetGame(); selectedWordLocal = null }"
+                @click="() => { resetGame(); selectedWordLocal = null; showFinishModal = false }"
                 color="primary"
                 size="sm"
-                class="w-full"
               >
-                New Game
+                New Game (Become Host)
               </UButton>
             </div>
           </div>
@@ -498,7 +645,7 @@ onMounted(() => {
       <p v-else>Connecting…</p>
 
       <!-- Guesses overlay -->
-      <div v-if="ready && (gameState.status === 'playing' || gameState.status === 'finished')" class="absolute bottom-16 right-4 w-40 pointer-events-none select-none z-10">
+      <div v-if="ready && (gameState.status === 'playing' || gameState.status === 'finished')" class="absolute bottom-16 right-4 w-64 pointer-events-none select-none z-10">
         <!-- Guesses list with fade at top -->
         <div class="relative max-h-[250px]">
           <div 
@@ -544,7 +691,7 @@ onMounted(() => {
       </div>
 
       <!-- Input area (separate, only for viewers during playing) -->
-      <div v-if="ready && !isHost && gameState.status === 'playing'" class="absolute bottom-4 right-4 w-40 p-2 pointer-events-auto z-10 bg-black/30 backdrop-blur-sm rounded-lg">
+      <div v-if="ready && !isHost && gameState.status === 'playing'" class="absolute bottom-4 right-4 w-64 p-2 pointer-events-auto z-10 bg-black/30 backdrop-blur-sm rounded-lg">
         <div class="flex gap-1">
           <UInput 
             v-model="guessInput"

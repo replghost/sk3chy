@@ -17,6 +17,12 @@
           
           <UDivider orientation="vertical" class="h-6 mx-2" />
           
+          <UButton variant="ghost" to="/game/1" size="sm">Room 1</UButton>
+          <UButton variant="ghost" to="/game/2" size="sm">Room 2</UButton>
+          <UButton variant="ghost" to="/game/3" size="sm">Room 3</UButton>
+          
+          <UDivider orientation="vertical" class="h-6 mx-2" />
+          
           <WalletConnect />
         </nav>
       </div>
