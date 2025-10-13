@@ -67,8 +67,8 @@ Issued At: ${issuedAt}`
   async function verifyPeer(peerData: SIWEData): Promise<boolean> {
     const { message, signature, timestamp, address } = peerData
     
-    // Check timestamp (reject if > 24 hours old)
-    const maxAge = 24 * 60 * 60 * 1000 // 24 hours
+    // Check timestamp (reject if > 1 hour old)
+    const maxAge = 60 * 60 * 1000 // 1 hour
     if (Date.now() - timestamp > maxAge) {
       console.warn('[SIWE] Peer signature expired:', address)
       return false
@@ -116,10 +116,36 @@ Issued At: ${issuedAt}`
     return await verifyPeer(userData)
   }
   
+  /**
+   * Check if a user is both verified AND currently active (wallet connected)
+   * @param address - User's Ethereum address
+   * @param awarenessStates - Current awareness states from yroom.awareness.getStates()
+   */
+  async function isUserActive(address: string, awarenessStates: Map<number, any>): Promise<boolean> {
+    // Check signature is valid
+    const isVerified = await isAddressVerified(address)
+    if (!isVerified) return false
+    
+    // Check if wallet is currently connected (via awareness)
+    const states = Array.from(awarenessStates.values())
+    const peer = states.find(p => p.address?.toLowerCase() === address.toLowerCase())
+    return peer?.walletConnected === true
+  }
+  
+  /**
+   * Remove user's signature from the room (e.g., on disconnect)
+   */
+  function clearSignature(address: string) {
+    yroom.doc.getMap('users').delete(address)
+    console.log('[SIWE] Cleared signature for:', address)
+  }
+  
   return {
     signIn,
     verifyPeer,
     getVerifiedUsers,
-    isAddressVerified
+    isAddressVerified,
+    isUserActive,
+    clearSignature
   }
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useAccount, useConnect, useDisconnect, useSignMessage } from '@wagmi/vue'
 import { useSIWE, type SIWEData } from '~/composables/useSIWE'
 
@@ -43,6 +43,25 @@ onMounted(async () => {
   console.log('[SIWE Test] Room initialized:', roomId)
 })
 
+// Watch wallet connection status
+watch([isConnected, address], ([connected, addr], [wasConnected, prevAddr]) => {
+  if (!yroom) return
+  
+  // Update awareness with wallet connection status
+  yroom.awareness.setLocalState({
+    ...yroom.awareness.getLocalState(),
+    address: connected ? addr : null,
+    walletConnected: connected
+  })
+  
+  // Clear signature on disconnect
+  if (!connected && wasConnected && prevAddr) {
+    siweComposable?.clearSignature(prevAddr)
+    isSigned.value = false
+    console.log('[SIWE Test] Cleared signature on disconnect')
+  }
+}, { immediate: true })
+
 async function handleSignIn() {
   if (!address.value) {
     error.value = 'Please connect your wallet first'
@@ -65,11 +84,12 @@ async function handleSignIn() {
     console.log('[SIWE Test] Signed in:', result)
     isSigned.value = true
     
-    // Update awareness with address
+    // Update awareness with address and wallet connection
     yroom.awareness.setLocalState({
       ...yroom.awareness.getLocalState(),
       address: address.value,
-      signedIn: true
+      signedIn: true,
+      walletConnected: true
     })
   } catch (err: any) {
     console.error('[SIWE Test] Sign in error:', err)
@@ -89,13 +109,36 @@ async function handleVerifyPeer(peerAddress: string) {
   }
   
   const isValid = await siweComposable.verifyPeer(userData)
-  console.log('[SIWE Test] Peer verification result:', peerAddress, isValid)
-  alert(`Peer ${peerAddress.slice(0, 6)}...${peerAddress.slice(-4)} is ${isValid ? 'VALID ✓' : 'INVALID ✗'}`)
+  const isActive = await siweComposable.isUserActive(peerAddress, yroom.awareness.getStates())
+  
+  console.log('[SIWE Test] Peer verification:', { peerAddress, isValid, isActive })
+  
+  let status = ''
+  if (isValid && isActive) {
+    status = 'VERIFIED & ACTIVE ✓✓'
+  } else if (isValid && !isActive) {
+    status = 'VERIFIED but OFFLINE ✓○'
+  } else {
+    status = 'INVALID ✗'
+  }
+  
+  alert(`Peer ${peerAddress.slice(0, 6)}...${peerAddress.slice(-4)}\n${status}`)
 }
 
 const connectedPeers = computed(() => {
   return peerStates.value.filter(p => p.address)
 })
+
+function getPeerStatus(peer: any) {
+  if (peer.walletConnected && peer.signedIn) {
+    return { text: '✓ Active & Signed In', color: 'green' }
+  } else if (peer.signedIn) {
+    return { text: '○ Signed In (Wallet Disconnected)', color: 'yellow' }
+  } else if (peer.walletConnected) {
+    return { text: '○ Connected (Not Signed In)', color: 'blue' }
+  }
+  return { text: '○ Not signed in', color: 'gray' }
+}
 </script>
 
 <template>
@@ -267,13 +310,16 @@ const connectedPeers = computed(() => {
                 :key="idx"
                 class="flex items-center gap-3 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg"
               >
-                <div class="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
+                <div 
+                  class="w-3 h-3 rounded-full"
+                  :class="peer.walletConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"
+                ></div>
                 <div class="flex-1">
                   <p class="font-mono text-sm">
                     {{ peer.address?.slice(0, 10) }}...{{ peer.address?.slice(-8) }}
                   </p>
-                  <p class="text-xs text-neutral-500">
-                    {{ peer.signedIn ? '✓ Signed In' : '○ Not signed in' }}
+                  <p class="text-xs" :class="`text-${getPeerStatus(peer).color}-600 dark:text-${getPeerStatus(peer).color}-400`">
+                    {{ getPeerStatus(peer).text }}
                   </p>
                 </div>
               </div>
