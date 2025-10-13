@@ -1,6 +1,6 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center p-6">
-    <div class="max-w-4xl w-full text-center space-y-12">
+  <div class="min-h-screen flex items-center justify-center p-6 pt-12">
+    <div class="max-w-4xl w-full text-center space-y-8">
       <!-- Hero Section -->
       <div class="space-y-4">
         <h1 class="text-7xl md:text-8xl font-bold tracking-tight">
@@ -51,31 +51,6 @@
           >
             Join
           </UButton>
-        </div>
-      </div>
-
-      <!-- Features -->
-      <div class="grid md:grid-cols-3 gap-6 pt-8 text-left">
-        <div class="space-y-2">
-          <div class="text-3xl">🎨</div>
-          <h3 class="font-semibold text-lg">Draw in Real-Time</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400">
-            Collaborative canvas powered by P2P technology
-          </p>
-        </div>
-        <div class="space-y-2">
-          <div class="text-3xl">🔐</div>
-          <h3 class="font-semibold text-lg">Verifiable Results</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400">
-            Cryptographic commitment ensures fair play
-          </p>
-        </div>
-        <div class="space-y-2">
-          <div class="text-3xl">⚡</div>
-          <h3 class="font-semibold text-lg">No Server Needed</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400">
-            Direct peer-to-peer connections via WebRTC
-          </p>
         </div>
       </div>
     </div>
