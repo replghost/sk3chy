@@ -156,39 +156,6 @@ The server uses WebSocket with JSON messages.
 4. Railway will auto-detect the Dockerfile
 5. Set environment variable `PORT` if needed (Railway provides one by default)
 
-### Render
-
-1. Create a new Web Service on [Render](https://render.com)
-2. Connect your GitHub repository
-3. Set the root directory to `signaling-server`
-4. Docker will be auto-detected
-5. Set environment variable `PORT=4444`
-
-### DigitalOcean App Platform
-
-1. Create a new App on [DigitalOcean](https://www.digitalocean.com/products/app-platform)
-2. Connect your GitHub repository
-3. Set the source directory to `signaling-server`
-4. Select Dockerfile as the build method
-5. Configure port `4444`
-
-### Fly.io
-
-```bash
-# Install flyctl
-curl -L https://fly.io/install.sh | sh
-
-# Login
-flyctl auth login
-
-# Launch app (from signaling-server directory)
-cd signaling-server
-flyctl launch
-
-# Deploy
-flyctl deploy
-```
-
 ## Health Monitoring
 
 The server logs statistics every minute:
