@@ -815,7 +815,7 @@ onMounted(() => {
 
       <!-- Word Length Hint (letter underlines) -->
       <div v-if="(gameState.status === 'playing' || gameState.status === 'finished') && (gameState.wordLength || gameState.selectedWord)" class="absolute top-4 md:top-8 left-1/2 transform -translate-x-1/2 pointer-events-none z-20">
-        <div class="flex gap-2 md:gap-4">
+        <div class="flex gap-3 md:gap-6">
           <div 
             v-for="(letter, index) in (gameState.status === 'finished' && gameState.selectedWord ? gameState.selectedWord : Array(gameState.wordLength).fill(''))" 
             :key="index"
