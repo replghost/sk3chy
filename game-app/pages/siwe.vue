@@ -22,9 +22,26 @@ const peerStates = ref<any[]>([])
 onMounted(async () => {
   // Initialize Yjs room
   const { $createYRoom } = useNuxtApp()
-  yroom = $createYRoom(roomId, {
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-  })
+  const config = useRuntimeConfig()
+  
+  // Build ICE servers array (same as game page)
+  const iceServers: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' }
+  ]
+  
+  // Add TURN server if credentials are configured
+  if (config.public.turnUsername && config.public.turnCredential) {
+    console.log('[SIWE Test] TURN server configured')
+    iceServers.push({
+      urls: 'turn:a.relay.metered.ca:443',
+      username: config.public.turnUsername,
+      credential: config.public.turnCredential
+    })
+  } else {
+    console.log('[SIWE Test] Using STUN-only (no TURN servers)')
+  }
+  
+  yroom = $createYRoom(roomId, { iceServers })
   
   // Initialize SIWE
   siweComposable = useSIWE(yroom)
