@@ -683,29 +683,6 @@ onMounted(() => {
     <!-- Compact controls row -->
     <div class="flex items-center gap-2 flex-wrap text-xs">
 
-        <!-- Host Controls - Word Selection -->
-        <template v-if="isHost && gameState.status === 'selecting'">
-          <span class="text-gray-600 dark:text-gray-400">Choose word:</span>
-          <UButton
-            v-for="word in gameState.wordOptions"
-            :key="word"
-            @click="() => { selectWord(word); selectedWordLocal = word }"
-            :color="selectedWordLocal === word ? 'primary' : 'gray'"
-            :variant="selectedWordLocal === word ? 'solid' : 'soft'"
-            size="xs"
-          >
-            {{ word }}
-          </UButton>
-          <UButton
-            v-if="gameState.wordCommitment"
-            @click="startGame"
-            color="green"
-            size="xs"
-            class="ml-2"
-          >
-            Start! ({{ gameState.duration < 60 ? `${gameState.duration}s` : `${Math.floor(gameState.duration / 60)}m` }})
-          </UButton>
-        </template>
 
         <!-- Host Controls - Playing -->
         <template v-if="isHost && gameState.status === 'playing'">
@@ -735,9 +712,98 @@ onMounted(() => {
         <span v-if="!isHost && gameState.status === 'waiting'" class="text-gray-500 text-xs">
           Waiting for host...
         </span>
-        <span v-if="!isHost && gameState.status === 'selecting'" class="text-gray-500 text-xs">
-          Host choosing word...
-        </span>
+    </div>
+
+    <!-- Non-host waiting screen during word selection -->
+    <div v-if="!isHost && gameState.status === 'selecting'" class="flex items-center justify-center p-6 min-h-[80vh]">
+      <div class="text-center max-w-2xl w-full">
+        <div class="animate-spin w-16 h-16 border-4 border-primary border-t-transparent rounded-full mx-auto mb-6"></div>
+        <h2 class="text-2xl font-bold mb-2">Host is choosing a word...</h2>
+        <p class="text-gray-600 dark:text-gray-400 mb-8">The game will start soon</p>
+        
+        <!-- Players List -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mt-8">
+          <h3 class="text-lg font-semibold mb-4 flex items-center justify-center gap-2">
+            <span>👥</span>
+            <span>Players</span>
+            <span class="text-sm font-normal text-gray-500">{{ peers.length }}</span>
+          </h3>
+          
+          <div class="grid grid-cols-2 gap-2">
+            <div 
+              v-for="peer in peers" 
+              :key="peer.id"
+              class="flex items-center gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-700"
+              :class="{ 'ring-2 ring-primary': peer.id === userId }"
+            >
+              <div 
+                class="w-8 h-8 rounded-full flex-shrink-0" 
+                :style="{ backgroundColor: peer.color || '#0aa' }"
+              />
+              <div class="flex-1 min-w-0 text-left">
+                <div class="text-sm font-semibold truncate">
+                  {{ peer.displayName || 'Anonymous' }}
+                  <span v-if="peer.id === userId" class="text-xs text-gray-500">(you)</span>
+                </div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">
+                  <span v-if="peer.id === gameState.hostId">🎨 Host</span>
+                  <span v-else>👀 Player</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full-screen Word Selection for Host -->
+    <div v-if="isHost && gameState.status === 'selecting'" class="flex items-center justify-center p-6 min-h-[80vh]">
+      <div class="max-w-4xl w-full">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+          <h2 class="text-3xl font-bold mb-2 text-center">Choose Your Word</h2>
+          <p class="text-gray-600 dark:text-gray-400 text-center mb-8">
+            Select a word to draw for the other players
+          </p>
+          
+          <!-- Word Options - 3 across -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <button
+              v-for="word in gameState.wordOptions"
+              :key="word"
+              @click="() => { selectWord(word); selectedWordLocal = word }"
+              class="group relative p-8 rounded-xl border-4 transition-all hover:scale-105"
+              :class="selectedWordLocal === word 
+                ? 'border-primary bg-primary/10 shadow-lg' 
+                : 'border-gray-200 dark:border-gray-700 hover:border-primary/50'"
+            >
+              <div class="text-center">
+                <div class="text-3xl font-bold" :class="selectedWordLocal === word ? 'text-primary' : 'text-gray-900 dark:text-white'">
+                  {{ word }}
+                </div>
+                <div v-if="selectedWordLocal === word" class="text-primary text-xl mt-2">
+                  ✓
+                </div>
+              </div>
+            </button>
+          </div>
+
+          <!-- Start Button -->
+          <div class="flex justify-center">
+            <UButton
+              v-if="gameState.wordCommitment"
+              @click="startGame"
+              color="primary"
+              size="xl"
+              class="font-bold text-lg px-12"
+            >
+              🎮 Start Drawing! ({{ gameState.duration < 60 ? `${gameState.duration}s` : `${Math.floor(gameState.duration / 60)}m` }})
+            </UButton>
+            <div v-else class="text-gray-500 dark:text-gray-400">
+              Select a word to continue...
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Canvas with overlay -->
