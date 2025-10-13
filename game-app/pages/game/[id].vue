@@ -380,14 +380,16 @@ watch(() => gameState.value.winnerId, (newWinnerId, oldWinnerId) => {
         angle: 60,
         spread: 55,
         origin: { x: 0 },
-        colors: colors
+        colors: colors,
+        zIndex: 100000
       })
       confetti({
         particleCount: 3,
         angle: 120,
         spread: 55,
         origin: { x: 1 },
-        colors: colors
+        colors: colors,
+        zIndex: 100000
       })
 
       if (Date.now() < end) {
