@@ -6,9 +6,21 @@ export interface SIWEData {
   message: string
   timestamp: number
   nonce: string
+  roomId: string
 }
 
 export function useSIWE(yroom: any) {
+  const roomId = yroom.doc.guid // Use Yjs document GUID as room identifier
+  const usedNonces = new Set<string>() // Track used nonces in this session
+  
+  // Load existing nonces from room to prevent replay
+  const existingUsers = yroom.doc.getMap('users')
+  existingUsers.forEach((userData: SIWEData) => {
+    if (userData.nonce) {
+      usedNonces.add(userData.nonce)
+    }
+  })
+  
   /**
    * Sign in with Ethereum - client-side SIWE implementation
    * @param address - User's Ethereum address
@@ -19,11 +31,16 @@ export function useSIWE(yroom: any) {
     const nonce = crypto.randomUUID()
     const issuedAt = new Date().toISOString()
     
-    // Create SIWE message (EIP-4361 format)
+    // Check if nonce already used (replay protection)
+    if (usedNonces.has(nonce)) {
+      throw new Error('Nonce already used (replay detected)')
+    }
+    
+    // Create SIWE message (EIP-4361 format) with room-specific statement
     const message = `${window.location.host} wants you to sign in with your Ethereum account:
 ${address}
 
-Sign in to sk3tchy
+Sign in to sk3tchy room: ${roomId}
 
 URI: ${window.location.origin}
 Version: 1
@@ -50,8 +67,12 @@ Issued At: ${issuedAt}`
       signature,
       message,
       timestamp: Date.now(),
-      nonce
+      nonce,
+      roomId
     }
+    
+    // Track nonce as used
+    usedNonces.add(nonce)
     
     // Store in Yjs for peer verification
     yroom.doc.getMap('users').set(address, siweData)
@@ -65,7 +86,23 @@ Issued At: ${issuedAt}`
    * @param peerData - SIWE data from peer
    */
   async function verifyPeer(peerData: SIWEData): Promise<boolean> {
-    const { message, signature, timestamp, address } = peerData
+    const { message, signature, timestamp, address, nonce, roomId: peerRoomId } = peerData
+    
+    // Check room binding (prevent cross-room replay)
+    if (peerRoomId && peerRoomId !== roomId) {
+      console.warn('[SIWE] Signature from different room:', address, peerRoomId)
+      return false
+    }
+    
+    // Check nonce uniqueness (prevent replay in same room)
+    if (usedNonces.has(nonce)) {
+      const existingUser = yroom.doc.getMap('users').get(address)
+      // Allow if it's the same user's existing signature
+      if (existingUser?.nonce !== nonce) {
+        console.warn('[SIWE] Nonce already used (replay detected):', address)
+        return false
+      }
+    }
     
     // Check timestamp (reject if > 1 hour old)
     const maxAge = 60 * 60 * 1000 // 1 hour
