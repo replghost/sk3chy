@@ -399,14 +399,16 @@ watch(() => gameState.value.winnerId, (newWinnerId, oldWinnerId) => {
 })
 
 onMounted(() => {
-  // Build ICE servers array
+  // Build ICE servers array - using multiple STUN servers for better connectivity
   const iceServers: RTCIceServer[] = [
-    { urls: 'stun:stun.l.google.com:19302' }
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' }
   ]
 
-  // Add TURN servers only if credentials are configured (for production)
+  // Add TURN servers only if credentials are configured and valid
   if (config.public.turnUsername && config.public.turnCredential) {
-    // Use only 2 TURN servers to avoid the "5+ servers" warning
+    console.log('[Game] TURN servers configured')
     iceServers.push(
       {
         urls: 'turn:a.relay.metered.ca:80',
@@ -419,6 +421,8 @@ onMounted(() => {
         credential: config.public.turnCredential
       }
     )
+  } else {
+    console.log('[Game] Using STUN-only (no TURN servers)')
   }
 
   start({ iceServers })
