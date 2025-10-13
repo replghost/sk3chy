@@ -757,14 +757,14 @@ onMounted(() => {
       <p v-else>Connecting…</p>
 
       <!-- Word Length Hint (letter underlines) -->
-      <div v-if="(gameState.status === 'playing' || gameState.status === 'finished') && (gameState.wordLength || gameState.selectedWord)" class="absolute top-8 left-1/2 transform -translate-x-1/2 pointer-events-none z-20">
-        <div class="flex gap-4">
+      <div v-if="(gameState.status === 'playing' || gameState.status === 'finished') && (gameState.wordLength || gameState.selectedWord)" class="absolute top-4 md:top-8 left-1/2 transform -translate-x-1/2 pointer-events-none z-20">
+        <div class="flex gap-2 md:gap-4">
           <div 
             v-for="(letter, index) in (gameState.status === 'finished' && gameState.selectedWord ? gameState.selectedWord : Array(gameState.wordLength).fill(''))" 
             :key="index"
-            class="w-8 h-12 border-b-4 border-gray-800 dark:border-white flex flex-col items-center justify-end pb-1"
+            class="w-5 h-8 md:w-8 md:h-12 border-b-2 md:border-b-4 border-gray-800 dark:border-white flex flex-col items-center justify-end pb-0.5 md:pb-1"
           >
-            <span v-if="gameState.status === 'finished' && letter" class="text-2xl font-bold text-gray-800 dark:text-white">
+            <span v-if="gameState.status === 'finished' && letter" class="text-lg md:text-2xl font-bold text-gray-800 dark:text-white">
               {{ letter.toLowerCase() }}
             </span>
           </div>
@@ -787,16 +787,10 @@ onMounted(() => {
               style="text-shadow: 0 0 8px rgba(0,0,0,0.8), 0 0 4px rgba(0,0,0,0.9)"
             >
               <span 
-                class="opacity-50"
+                class="opacity-80"
                 :style="{ color: peers.find(p => p.id === guess.by)?.color || '#fff' }"
               >
-                {{ guess.displayName }}:
-              </span>
-              <span 
-                class="ml-1 opacity-80"
-                :style="{ color: peers.find(p => p.id === guess.by)?.color || '#fff' }"
-              >
-                {{ guess.text }}
+                {{ guess.displayName }}: {{ guess.text }}
               </span>
             </div>
           </div>
@@ -859,9 +853,9 @@ onMounted(() => {
       <!-- Responsive Layout: Horizontal on desktop, Vertical on mobile -->
       <div class="flex flex-col md:flex-row gap-3 md:gap-6">
         <!-- PNG Preview (optional - loads in background) -->
-        <div v-if="exportedImageUrl" class="flex-shrink-0 md:w-1/2 relative">
-          <div class="rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700 max-h-[40vh] md:max-h-none">
-            <img :src="exportedImageUrl" alt="Drawing" class="w-full h-full object-contain md:object-cover" />
+        <div v-if="exportedImageUrl" class="flex-shrink-0 md:w-1/2 relative mx-auto max-w-[80vw] md:max-w-none">
+          <div class="rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700 aspect-[4/3] md:aspect-auto md:h-auto flex items-center justify-center bg-black">
+            <img :src="exportedImageUrl" alt="Drawing" class="w-full h-full object-contain" />
           </div>
           <!-- Download button overlay -->
           <button
