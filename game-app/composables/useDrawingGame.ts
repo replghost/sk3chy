@@ -30,6 +30,7 @@ type GameState = {
   selectedWord: string | null  // Only revealed at end
   wordCommitment: string | null  // Hash commitment
   wordSalt: string | null  // Revealed at end for verification
+  wordLength: number | null  // Length of word (safe to reveal)
   wordOptions: string[] | null
   difficulty: DifficultyLevel
   startTime: number | null
@@ -60,16 +61,16 @@ export function useDrawingGame(roomId: string) {
     selectedWord: null,
     wordCommitment: null,
     wordSalt: null,
+    wordLength: null,
     wordOptions: null,
     difficulty: 'medium',
     startTime: null,
     endTime: null,
-    duration: 180, // 3 minutes
+    duration: 180,
     winnerId: null,
     winnerName: null,
     commitmentVerified: null
   })
-
   const timeRemaining = ref(0)
   let timerInterval: ReturnType<typeof setInterval> | null = null
 
@@ -208,6 +209,7 @@ export function useDrawingGame(roomId: string) {
       selectedWord: ygame.get('selectedWord') || null,
       wordCommitment: ygame.get('wordCommitment') || null,
       wordSalt: ygame.get('wordSalt') || null,
+      wordLength: ygame.get('wordLength') || null,
       wordOptions: ygame.get('wordOptions') || null,
       difficulty: ygame.get('difficulty') || 'medium',
       startTime: ygame.get('startTime') || null,
@@ -254,8 +256,9 @@ export function useDrawingGame(roomId: string) {
     localSelectedWord = word
     localSalt = salt
     
-    // Broadcast only the commitment, not the word itself
+    // Broadcast only the commitment and word length, not the word itself
     yroom.game.set('wordCommitment', commitment)
+    yroom.game.set('wordLength', word.length) // Safe to reveal length
     yroom.game.set('selectedWord', null) // Don't reveal the word yet
     
     console.log('Word selected:', word, 'Commitment:', commitment.substring(0, 10) + '...')
@@ -376,6 +379,7 @@ export function useDrawingGame(roomId: string) {
       yroom.game.set('selectedWord', null)
       yroom.game.set('wordCommitment', null)
       yroom.game.set('wordSalt', null)
+      yroom.game.set('wordLength', null)
       yroom.game.set('wordOptions', null)
       yroom.game.set('startTime', null)
       yroom.game.set('endTime', null)

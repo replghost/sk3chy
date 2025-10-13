@@ -176,6 +176,12 @@ function downloadDrawing() {
     ctx.fillText(`Time's up - No winner`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
   }
   
+  // Add sk3chy branding in lower left
+  ctx.textAlign = 'left'
+  ctx.fillStyle = '#888'
+  ctx.font = `${18 * scale}px sans-serif`
+  ctx.fillText('sk3chy', 20 * scale, exportCanvas.height - 20 * scale)
+  
   // Convert to blob and create preview/download
   exportCanvas.toBlob((blob) => {
     if (!blob) return
@@ -190,7 +196,10 @@ function downloadDrawing() {
     // Download
     const a = document.createElement('a')
     a.href = url
-    a.download = `drawing-${gameState.value.selectedWord}-${Date.now()}.png`
+    a.download = `sk3chy-${gameState.value.selectedWord}-${Date.now()}.png`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
   }, 'image/png', 0.95) // High quality PNG
 }
 
@@ -300,7 +309,13 @@ function generatePreview() {
       ctx.fillStyle = '#aaa'
       ctx.fillText(`Time's up - No winner`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
     }
-  
+    
+    // Add sk3chy branding in lower left
+    ctx.textAlign = 'left'
+    ctx.fillStyle = '#888'
+    ctx.font = `${18 * scale}px sans-serif`
+    ctx.fillText('sk3chy', 20 * scale, exportCanvas.height - 20 * scale)
+    
     // Convert to blob and create preview only (no download)
     // Use lower quality to speed up generation
     exportCanvas.toBlob((blob) => {
@@ -736,6 +751,21 @@ onMounted(() => {
         :onCursor="setCursor"
       />
       <p v-else>Connecting…</p>
+
+      <!-- Word Length Hint (letter underlines) -->
+      <div v-if="(gameState.status === 'playing' || gameState.status === 'finished') && (gameState.wordLength || gameState.selectedWord)" class="absolute top-8 left-1/2 transform -translate-x-1/2 pointer-events-none z-20">
+        <div class="flex gap-4">
+          <div 
+            v-for="(letter, index) in (gameState.status === 'finished' && gameState.selectedWord ? gameState.selectedWord : Array(gameState.wordLength).fill(''))" 
+            :key="index"
+            class="w-8 h-12 border-b-4 border-gray-800 dark:border-white flex flex-col items-center justify-end pb-1"
+          >
+            <span v-if="gameState.status === 'finished' && letter" class="text-2xl font-bold text-gray-800 dark:text-white">
+              {{ letter.toLowerCase() }}
+            </span>
+          </div>
+        </div>
+      </div>
 
       <!-- Guesses overlay -->
       <div v-if="ready && (gameState.status === 'playing' || gameState.status === 'finished')" class="absolute bottom-16 right-4 w-64 pointer-events-none select-none z-10">
