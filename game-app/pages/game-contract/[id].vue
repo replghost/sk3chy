@@ -77,6 +77,10 @@ const drawingColors = [
 
 const difficulties = getAllDifficulties()
 
+// Separate active players from spectators
+const activePlayers = computed(() => peers.value.slice(0, maxPlayers))
+const spectators = computed(() => peers.value.slice(maxPlayers))
+
 const handleSendGuess = () => {
   if (guessInput.value.trim()) {
     sendGuess(guessInput.value)
@@ -598,20 +602,21 @@ async function handleRevealAndScoreOnChain() {
     contractError.value = null
     
     // Get winners and scores from game state
+    // Only include active players (first maxPlayers), exclude spectators
     const winners: Address[] = []
     const scores: number[] = []
     
-    // If there's a winner, add them
+    // If there's a winner, add them (only if they're an active player)
     if (gameState.value.winnerId) {
-      const winnerPeer = peers.value.find(p => p.id === gameState.value.winnerId)
+      const winnerPeer = activePlayers.value.find(p => p.id === gameState.value.winnerId)
       if (winnerPeer?.address) {
         winners.push(winnerPeer.address as Address)
         scores.push(100) // Winner gets 100 points
       }
     }
     
-    // Add other players with their guess counts as scores
-    peers.value.forEach(peer => {
+    // Add other active players with their guess counts as scores
+    activePlayers.value.forEach(peer => {
       if (peer.id !== gameState.value.winnerId && peer.address) {
         const peerGuesses = guesses.value.filter(g => g.by === peer.id).length
         if (peerGuesses > 0) {
@@ -820,16 +825,17 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
             <span>👥</span>
             <span>Players</span>
             <span class="text-sm font-normal" :class="isRoomFull ? 'text-red-500' : 'text-gray-500'">
-              {{ peers.length }}/{{ maxPlayers }}
+              {{ activePlayers.length }}/{{ maxPlayers }}
             </span>
             <span v-if="isRoomFull" class="text-xs font-normal text-red-500 bg-red-100 dark:bg-red-900/30 px-2 py-0.5 rounded">
               FULL
             </span>
           </h2>
           
-          <div class="grid grid-cols-2 gap-2 mb-6">
+          <!-- Active Players -->
+          <div class="grid grid-cols-2 gap-2 mb-4">
             <div 
-              v-for="peer in peers" 
+              v-for="peer in activePlayers" 
               :key="peer.id"
               class="flex items-center gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-700 transition-all hover:scale-105"
               :class="{ 'ring-2 ring-primary': peer.id === userId }"
@@ -875,8 +881,39 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
             </div>
             
             <!-- Empty state -->
-            <div v-if="peers.length === 0" class="col-span-2 text-center py-8 text-gray-400">
+            <div v-if="activePlayers.length === 0" class="col-span-2 text-center py-8 text-gray-400">
               <p>Waiting for players to join...</p>
+            </div>
+          </div>
+          
+          <!-- Spectators Section -->
+          <div v-if="spectators.length > 0" class="border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
+            <h3 class="text-sm font-semibold mb-3 flex items-center gap-2 text-gray-600 dark:text-gray-400">
+              <span>👁️</span>
+              <span>Spectators</span>
+              <span class="text-xs font-normal">{{ spectators.length }}</span>
+            </h3>
+            <div class="grid grid-cols-2 gap-2 mb-4">
+              <div 
+                v-for="peer in spectators" 
+                :key="peer.id"
+                class="flex items-center gap-2 p-2 rounded-lg bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 transition-all hover:scale-105"
+                :class="{ 'ring-2 ring-yellow-400': peer.id === userId }"
+              >
+                <div 
+                  class="w-6 h-6 rounded-full flex-shrink-0 opacity-60" 
+                  :style="{ backgroundColor: peer.color || '#0aa' }"
+                />
+                <div class="flex-1 min-w-0">
+                  <div class="text-xs font-semibold truncate flex items-center gap-1 text-yellow-700 dark:text-yellow-400">
+                    {{ peer.displayName || 'Anonymous' }}
+                    <span v-if="peer.id === userId" class="text-[10px]">(you)</span>
+                  </div>
+                  <div class="text-[10px] text-yellow-600 dark:text-yellow-500">
+                    Watching
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           
@@ -1440,21 +1477,31 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
 
       <!-- Input area (separate, only for viewers during playing) -->
       <div v-if="ready && !isHost && gameState.status === 'playing'" class="absolute bottom-4 right-4 w-64 p-2 pointer-events-auto z-10 bg-black/30 backdrop-blur-sm rounded-lg">
+        <!-- Spectator Warning -->
+        <div v-if="!canJoin" class="mb-2 text-xs text-yellow-300 bg-yellow-900/30 px-2 py-1 rounded flex items-center gap-1">
+          <span>👁️</span>
+          <span>Spectating only</span>
+        </div>
+        
         <div class="flex gap-1">
           <UInput 
             v-model="guessInput"
-            placeholder="guess..."
+            :placeholder="canJoin ? 'guess...' : 'spectating...'"
+            :disabled="!canJoin"
             size="xs"
             class="flex-1 transition-opacity"
+            :class="{ 'opacity-50 cursor-not-allowed': !canJoin }"
             :ui="{ base: 'bg-white/10 border-white/20 text-white placeholder-white/40' }"
-            @keyup.enter="handleSendGuess"
+            @keyup.enter="canJoin && handleSendGuess"
           />
           <UButton 
             @click="handleSendGuess"
+            :disabled="!canJoin"
             size="xs"
             color="gray"
             variant="ghost"
             class="opacity-60 hover:opacity-100"
+            :class="{ 'opacity-30 cursor-not-allowed': !canJoin }"
           >
             →
           </UButton>
