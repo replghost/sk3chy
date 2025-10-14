@@ -18,7 +18,7 @@ const roomId = `game-contract-${String(route.params.id)}`
 
 const {
   ready, strokes, peers, guesses, brushColor, brushSize, userId, displayName,
-  isHost, canDraw, gameState, timeRemaining,
+  isHost, canDraw, gameState, timeRemaining, isRoomFull, canJoin, maxPlayers,
   start, addPoint, commitStroke, setCursor, setDisplayName, setWalletAddress, sendGuess, clearCanvas,
   generateWordOptions, selectWord, startGame, resetGame, setDifficulty, setDuration,
   getYRoom
@@ -819,7 +819,12 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
           <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
             <span>👥</span>
             <span>Players</span>
-            <span class="text-sm font-normal text-gray-500">{{ peers.length }}</span>
+            <span class="text-sm font-normal" :class="isRoomFull ? 'text-red-500' : 'text-gray-500'">
+              {{ peers.length }}/{{ maxPlayers }}
+            </span>
+            <span v-if="isRoomFull" class="text-xs font-normal text-red-500 bg-red-100 dark:bg-red-900/30 px-2 py-0.5 rounded">
+              FULL
+            </span>
           </h2>
           
           <div class="grid grid-cols-2 gap-2 mb-6">
@@ -872,6 +877,19 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
             <!-- Empty state -->
             <div v-if="peers.length === 0" class="col-span-2 text-center py-8 text-gray-400">
               <p>Waiting for players to join...</p>
+            </div>
+          </div>
+          
+          <!-- Room Full Warning -->
+          <div v-if="isRoomFull && !canJoin" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <div class="flex items-start gap-2">
+              <span class="text-red-500 text-lg">⚠️</span>
+              <div class="flex-1">
+                <p class="text-sm font-semibold text-red-900 dark:text-red-100">Room is Full</p>
+                <p class="text-xs text-red-700 dark:text-red-300 mt-1">
+                  This room has reached the maximum of {{ maxPlayers }} players. You can spectate but cannot join the game.
+                </p>
+              </div>
             </div>
           </div>
 

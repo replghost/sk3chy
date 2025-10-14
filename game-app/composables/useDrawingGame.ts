@@ -5,6 +5,9 @@ import * as Y from 'yjs'
 import { sha256 } from 'crypto-hash'
 import { getRandomWords, type DifficultyLevel } from '~/utils/wordDictionary'
 
+// Maximum number of players allowed in a game
+const MAX_PLAYERS = 8
+
 type Point = { x: number; y: number; t: number }
 type Stroke = {
   id: string
@@ -91,6 +94,15 @@ export function useDrawingGame(roomId: string) {
   
   // Check if current user can draw
   const canDraw = computed(() => isHost.value && gameState.value.status === 'playing')
+  
+  // Check if room is full
+  const isRoomFull = computed(() => peers.value.length >= MAX_PLAYERS)
+  
+  // Check if current user can join (already in or room not full)
+  const canJoin = computed(() => {
+    const isAlreadyIn = peers.value.some(p => p.id === userId.value)
+    return isAlreadyIn || !isRoomFull.value
+  })
 
   async function start(roomOpts?: { signaling?: string[]; iceServers?: RTCIceServer[] }) {
     yroom = $createYRoom(roomId, roomOpts)
@@ -486,7 +498,9 @@ export function useDrawingGame(roomId: string) {
   return {
     // state
     ready, strokes, peers, guesses, brushColor, brushSize, userId, displayName,
-    isHost, canDraw, gameState, timeRemaining,
+    isHost, canDraw, gameState, timeRemaining, isRoomFull, canJoin,
+    // constants
+    maxPlayers: MAX_PLAYERS,
     // api
     start, addPoint, commitStroke, setCursor, setDisplayName, setWalletAddress, sendGuess, clearCanvas,
     generateWordOptions, selectWord, startGame, resetGame, setDifficulty, setDuration,
