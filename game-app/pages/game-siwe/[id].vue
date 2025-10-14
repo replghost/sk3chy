@@ -444,13 +444,51 @@ async function handleSiweSignIn() {
 
 // Check if a peer is SIWE authenticated
 function isPeerAuthenticated(peerId: string): boolean {
-  if (!siweComposable) return false
+  if (!siweComposable) {
+    console.log('[isPeerAuthenticated] No SIWE composable')
+    return false
+  }
   const verifiedUsers = siweComposable.getVerifiedUsers()
+  console.log('[isPeerAuthenticated] Verified users:', Array.from(verifiedUsers.keys()))
+  
   // Check if any verified address matches this peer's awareness state
   const peer = peers.value.find(p => p.id === peerId)
-  if (!peer?.address) return false
+  if (!peer?.address) {
+    console.log('[isPeerAuthenticated] No address for peer:', peerId)
+    return false
+  }
   const peerAddress = typeof peer.address === 'string' ? peer.address : String(peer.address)
-  return verifiedUsers.has(peerAddress.toLowerCase())
+  console.log('[isPeerAuthenticated] Checking address:', peerAddress)
+  
+  // Check both original case and lowercase
+  const hasOriginal = verifiedUsers.has(peerAddress)
+  const hasLower = verifiedUsers.has(peerAddress.toLowerCase())
+  console.log('[isPeerAuthenticated] Has original:', hasOriginal, 'Has lower:', hasLower)
+  
+  return hasOriginal || hasLower
+}
+
+// Get truncated address for a peer
+function getPeerAddress(peerId: string): string | null {
+  const peer = peers.value.find(p => p.id === peerId)
+  if (!peer?.address) {
+    console.log('[getPeerAddress] No address for peer:', peerId, peer)
+    return null
+  }
+  if (!isPeerAuthenticated(peerId)) {
+    console.log('[getPeerAddress] Peer not authenticated:', peerId)
+    return null
+  }
+  const addr = typeof peer.address === 'string' ? peer.address : String(peer.address)
+  const truncated = `${addr.slice(0, 6)}...${addr.slice(-4)}`
+  console.log('[getPeerAddress] Returning address:', truncated, 'for peer:', peerId)
+  return truncated
+}
+
+// Copy address to clipboard
+function copyAddress(address: string | number) {
+  const addr = typeof address === 'string' ? address : String(address)
+  window.navigator.clipboard.writeText(addr)
 }
 
 onMounted(() => {
@@ -486,6 +524,12 @@ watch(ready, (isReady) => {
     if (yroom) {
       siweComposable = useSIWE(yroom)
       console.log('[SIWE] Initialized')
+      
+      // Set wallet address if already connected
+      if (isConnected.value && address.value) {
+        setWalletAddress(address.value)
+        console.log('[Wallet] Set address on ready:', address.value)
+      }
     }
   }
 })
@@ -494,10 +538,14 @@ watch(ready, (isReady) => {
 watch([address, isConnected], ([newAddress, newIsConnected]) => {
   // Update awareness with wallet info
   console.log('[Wallet] Status changed:', { address: newAddress, connected: newIsConnected })
-  if (newIsConnected && newAddress) {
-    setWalletAddress(newAddress)
-  } else {
-    setWalletAddress(null)
+  if (ready.value) {
+    if (newIsConnected && newAddress) {
+      setWalletAddress(newAddress)
+      console.log('[Wallet] Set address:', newAddress)
+    } else {
+      setWalletAddress(null)
+      console.log('[Wallet] Cleared address')
+    }
   }
 })
 </script>
@@ -545,10 +593,32 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
                   <span v-if="isPeerAuthenticated(peer.id)" class="text-green-500" title="SIWE Authenticated">🔐</span>
                   <span v-if="peer.id === userId" class="text-xs text-gray-500">(you)</span>
                 </div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">
+                <div class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 flex-wrap">
                   <span v-if="peer.id === gameState.hostId">🎨 Host</span>
                   <span v-else>👀 Player</span>
-                  <span v-if="isPeerAuthenticated(peer.id)" class="ml-1 text-green-600 dark:text-green-400">· Verified</span>
+                  <!-- Show address if wallet connected (even without SIWE) -->
+                  <UPopover v-if="peer.address" mode="hover" :open-delay="100" :close-delay="200" :popper="{ placement: 'top', offsetDistance: 8 }">
+                    <span 
+                      class="font-mono cursor-pointer hover:underline inline-flex items-center gap-0.5 whitespace-nowrap" 
+                      :class="isPeerAuthenticated(peer.id) ? 'text-green-600 dark:text-green-400' : 'text-gray-400'"
+                    >
+                      <span>·</span>
+                      <span>{{ typeof peer.address === 'string' ? `${peer.address.slice(0, 6)}...${peer.address.slice(-4)}` : peer.address }}</span>
+                      <span v-if="isPeerAuthenticated(peer.id)" class="text-green-500">✓</span>
+                    </span>
+                    <template #panel="{ close }">
+                      <div class="p-2 flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
+                        <span class="text-xs font-mono">{{ typeof peer.address === 'string' ? peer.address : String(peer.address) }}</span>
+                        <UButton 
+                          size="xs" 
+                          color="gray" 
+                          variant="ghost"
+                          icon="i-heroicons-clipboard-document"
+                          @click="() => { copyAddress(peer.address); close(); }"
+                        />
+                      </div>
+                    </template>
+                  </UPopover>
                 </div>
               </div>
             </div>
@@ -781,12 +851,35 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
                 class="w-2 h-2 rounded-full" 
                 :style="{ backgroundColor: peer.color || '#0aa' }"
               />
-              <span class="truncate" :class="{ 'font-semibold': peer.id === userId }">
-                {{ peer.displayName || 'Anonymous' }}
-                <span v-if="peer.id === gameState.hostId">🎨</span>
-                <span v-if="peer.id === gameState.winnerId">🏆</span>
-                <span v-if="isPeerAuthenticated(peer.id)" class="text-green-500" title="SIWE Verified">🔐</span>
-              </span>
+              <div class="flex-1 min-w-0">
+                <div class="truncate" :class="{ 'font-semibold': peer.id === userId }">
+                  {{ peer.displayName || 'Anonymous' }}
+                  <span v-if="peer.id === gameState.hostId">🎨</span>
+                  <span v-if="peer.id === gameState.winnerId">🏆</span>
+                  <span v-if="isPeerAuthenticated(peer.id)" class="text-green-500" title="SIWE Verified">🔐</span>
+                </div>
+                <UPopover v-if="peer.address" mode="hover" :open-delay="100" :close-delay="200" :popper="{ placement: 'right', offsetDistance: 8 }">
+                  <div 
+                    class="text-[10px] font-mono truncate cursor-pointer hover:underline" 
+                    :class="isPeerAuthenticated(peer.id) ? 'text-green-600 dark:text-green-400' : 'text-gray-400'"
+                  >
+                    {{ typeof peer.address === 'string' ? `${peer.address.slice(0, 6)}...${peer.address.slice(-4)}` : peer.address }}
+                    <span v-if="isPeerAuthenticated(peer.id)" class="text-green-500">✓</span>
+                  </div>
+                  <template #panel="{ close }">
+                    <div class="p-2 flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
+                      <span class="text-xs font-mono">{{ typeof peer.address === 'string' ? peer.address : String(peer.address) }}</span>
+                      <UButton 
+                        size="xs" 
+                        color="gray" 
+                        variant="ghost"
+                        icon="i-heroicons-clipboard-document"
+                        @click="() => { copyAddress(peer.address); close(); }"
+                      />
+                    </div>
+                  </template>
+                </UPopover>
+              </div>
             </div>
           </div>
         </div>
@@ -859,10 +952,32 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
                   <span v-if="isPeerAuthenticated(peer.id)" class="text-green-500" title="SIWE Authenticated">🔐</span>
                   <span v-if="peer.id === userId" class="text-xs text-gray-500">(you)</span>
                 </div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">
+                <div class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 flex-wrap">
                   <span v-if="peer.id === gameState.hostId">🎨 Host</span>
                   <span v-else>👀 Player</span>
-                  <span v-if="isPeerAuthenticated(peer.id)" class="ml-1 text-green-600 dark:text-green-400">· Verified</span>
+                  <!-- Show address if wallet connected -->
+                  <UPopover v-if="peer.address" mode="hover" :open-delay="100" :close-delay="200" :popper="{ placement: 'top', offsetDistance: 8 }">
+                    <span 
+                      class="font-mono cursor-pointer hover:underline inline-flex items-center gap-0.5 whitespace-nowrap" 
+                      :class="isPeerAuthenticated(peer.id) ? 'text-green-600 dark:text-green-400' : 'text-gray-400'"
+                    >
+                      <span>·</span>
+                      <span>{{ typeof peer.address === 'string' ? `${peer.address.slice(0, 6)}...${peer.address.slice(-4)}` : peer.address }}</span>
+                      <span v-if="isPeerAuthenticated(peer.id)" class="text-green-500">✓</span>
+                    </span>
+                    <template #panel="{ close }">
+                      <div class="p-2 flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
+                        <span class="text-xs font-mono">{{ typeof peer.address === 'string' ? peer.address : String(peer.address) }}</span>
+                        <UButton 
+                          size="xs" 
+                          color="gray" 
+                          variant="ghost"
+                          icon="i-heroicons-clipboard-document"
+                          @click="() => { copyAddress(peer.address); close(); }"
+                        />
+                      </div>
+                    </template>
+                  </UPopover>
                 </div>
               </div>
             </div>

@@ -19,7 +19,8 @@ SIWE (Sign-In with Ethereum) authentication has been integrated into the `game-s
 ### 3. Visual Indicators
 Players with SIWE authentication are marked with:
 - 🔐 Lock icon next to their name
-- "Verified" label in green text
+- Truncated Ethereum address displayed (e.g., `0x1234...5678`) in monospace font
+- Green text color for verified status
 - Shows in all player lists:
   - Lobby waiting screen
   - Word selection waiting screen
@@ -34,6 +35,7 @@ Players with SIWE authentication are marked with:
    - Added wallet connection UI in lobby
    - Updated all player lists to show authentication status
    - Added `isPeerAuthenticated()` function to check verification status
+   - Added `getPeerAddress()` function to display truncated wallet addresses
 
 2. **`/game-app/composables/useDrawingGame.ts`**
    - Added `setWalletAddress()` function to update awareness
