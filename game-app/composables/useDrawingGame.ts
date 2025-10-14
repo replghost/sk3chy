@@ -166,7 +166,17 @@ export function useDrawingGame(roomId: string) {
     // awareness update
     yroom.awareness.on('change', () => {
       const states = yroom.awareness.getStates()
-      peers.value = Array.from(states.values())
+      const allPeers = Array.from(states.values())
+      
+      // Deduplicate peers by user ID (keep the most recent one)
+      const peerMap = new Map()
+      allPeers.forEach((peer: any) => {
+        if (peer.id) {
+          peerMap.set(peer.id, peer)
+        }
+      })
+      
+      peers.value = Array.from(peerMap.values())
       console.log('[DrawingGame] Awareness changed. Peers:', peers.value.length, peers.value)
       
       // Check if host is still connected
