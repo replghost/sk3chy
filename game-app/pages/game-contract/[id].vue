@@ -8,7 +8,9 @@ import YCanvas from '~/components/YCanvas.vue'
 import WalletConnect from '~/components/WalletConnect.vue'
 import { useDrawingGame } from '~/composables/useDrawingGame'
 import { useSIWE } from '~/composables/useSIWE'
+import { useGameContract } from '~/composables/useGameContract'
 import { getAllDifficulties, type DifficultyLevel } from '~/utils/wordDictionary'
+import type { Address } from 'viem'
 
 const config = useRuntimeConfig()
 const route = useRoute()
@@ -29,6 +31,29 @@ const isSigningIn = ref(false)
 const isSiweAuthenticated = ref(false)
 const siweError = ref<string | null>(null)
 let siweComposable: ReturnType<typeof useSIWE> | null = null
+
+// Smart Contract Integration
+const {
+  createGame: createGameOnChain,
+  joinGame: joinGameOnChain,
+  commitWord: commitWordOnChain,
+  revealAndScore: revealAndScoreOnChain,
+  usePlayerWins,
+  contractAddress,
+  isPending: isContractPending,
+} = useGameContract()
+
+// Contract state
+const onChainGameId = ref<number | null>(null)
+const wordSalt = ref<string>('')
+const isCreatingGame = ref(false)
+const isJoiningGame = ref(false)
+const isCommittingWord = ref(false)
+const isRevealingScore = ref(false)
+const contractError = ref<string | null>(null)
+
+// Get player wins
+const { data: playerWins } = usePlayerWins(address as any)
 
 const guessInput = ref('')
 const guessesContainer = ref<HTMLElement | null>(null)
@@ -412,6 +437,227 @@ watch(() => gameState.value.winnerId, (newWinnerId, oldWinnerId) => {
   }
 })
 
+// ============ SMART CONTRACT FUNCTIONS ============
+
+// Generate random salt for commit-reveal
+function generateSalt(): string {
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+}
+
+// Switch to PAsset Hub network
+async function switchToPAssetHub() {
+  if (!window.ethereum) {
+    contractError.value = 'MetaMask not found'
+    return false
+  }
+  
+  try {
+    // Try to switch to the network
+    await window.ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: '0x190f1b46' }], // 420420421 in hex
+    })
+    return true
+  } catch (switchError: any) {
+    // Network not added, try to add it
+    if (switchError.code === 4902) {
+      try {
+        await window.ethereum.request({
+          method: 'wallet_addEthereumChain',
+          params: [{
+            chainId: '0x190f1b46',
+            chainName: 'Polkadot Asset Hub Testnet',
+            nativeCurrency: {
+              name: 'DOT',
+              symbol: 'DOT',
+              decimals: 18,
+            },
+            rpcUrls: ['https://testnet-passet-hub-eth-rpc.polkadot.io'],
+            blockExplorerUrls: ['https://blockscout-passet-hub.parity-testnet.parity.io'],
+          }],
+        })
+        return true
+      } catch (addError: any) {
+        console.error('Failed to add network:', addError)
+        contractError.value = 'Failed to add network to MetaMask'
+        return false
+      }
+    } else {
+      console.error('Failed to switch network:', switchError)
+      contractError.value = 'Failed to switch network'
+      return false
+    }
+  }
+}
+
+// Create game on-chain (called by host when starting)
+async function handleCreateGameOnChain() {
+  if (!isConnected.value) {
+    contractError.value = 'Please connect your wallet first'
+    return
+  }
+  
+  // First, ensure we're on the right network
+  const switched = await switchToPAssetHub()
+  if (!switched) return
+  
+  try {
+    isCreatingGame.value = true
+    contractError.value = null
+    
+    const txHash = await createGameOnChain()
+    console.log('[Contract] Game created, tx:', txHash)
+    
+    // TODO: Parse gameId from transaction receipt
+    // For now, use room ID as placeholder
+    onChainGameId.value = parseInt(String(route.params.id))
+    
+  } catch (error: any) {
+    console.error('[Contract] Failed to create game:', error)
+    contractError.value = error.message || 'Failed to create game'
+  } finally {
+    isCreatingGame.value = false
+  }
+}
+
+// Join game on-chain (called by players)
+async function handleJoinGameOnChain() {
+  if (!isConnected.value) {
+    contractError.value = 'Please connect your wallet first'
+    return
+  }
+  
+  if (!onChainGameId.value) {
+    contractError.value = 'No on-chain game ID available'
+    return
+  }
+  
+  // First, ensure we're on the right network
+  const switched = await switchToPAssetHub()
+  if (!switched) return
+  
+  try {
+    isJoiningGame.value = true
+    contractError.value = null
+    
+    const txHash = await joinGameOnChain(onChainGameId.value)
+    console.log('[Contract] Joined game, tx:', txHash)
+    
+  } catch (error: any) {
+    console.error('[Contract] Failed to join game:', error)
+    contractError.value = error.message || 'Failed to join game'
+  } finally {
+    isJoiningGame.value = false
+  }
+}
+
+// Commit word hash on-chain (called by host after selecting word)
+async function handleCommitWordOnChain(word: string) {
+  if (!isConnected.value || !isHost.value) return
+  
+  if (!onChainGameId.value) {
+    contractError.value = 'No on-chain game ID available'
+    return
+  }
+  
+  try {
+    isCommittingWord.value = true
+    contractError.value = null
+    
+    // Generate salt and store it
+    wordSalt.value = generateSalt()
+    
+    const txHash = await commitWordOnChain(onChainGameId.value, word, wordSalt.value)
+    console.log('[Contract] Word committed, tx:', txHash)
+    console.log('[Contract] Salt:', wordSalt.value)
+    
+  } catch (error: any) {
+    console.error('[Contract] Failed to commit word:', error)
+    contractError.value = error.message || 'Failed to commit word'
+  } finally {
+    isCommittingWord.value = false
+  }
+}
+
+// Reveal and score on-chain (called by host when game ends)
+async function handleRevealAndScoreOnChain() {
+  if (!isConnected.value || !isHost.value) return
+  
+  if (!onChainGameId.value) {
+    contractError.value = 'No on-chain game ID available'
+    return
+  }
+  
+  if (!wordSalt.value) {
+    contractError.value = 'Word salt not found - did you commit the word?'
+    return
+  }
+  
+  try {
+    isRevealingScore.value = true
+    contractError.value = null
+    
+    // Get winners and scores from game state
+    const winners: Address[] = []
+    const scores: number[] = []
+    
+    // If there's a winner, add them
+    if (gameState.value.winnerId) {
+      const winnerPeer = peers.value.find(p => p.id === gameState.value.winnerId)
+      if (winnerPeer?.address) {
+        winners.push(winnerPeer.address as Address)
+        scores.push(100) // Winner gets 100 points
+      }
+    }
+    
+    // Add other players with their guess counts as scores
+    peers.value.forEach(peer => {
+      if (peer.id !== gameState.value.winnerId && peer.address) {
+        const peerGuesses = guesses.value.filter(g => g.by === peer.id).length
+        if (peerGuesses > 0) {
+          winners.push(peer.address as Address)
+          scores.push(peerGuesses * 10) // 10 points per guess
+        }
+      }
+    })
+    
+    const txHash = await revealAndScoreOnChain(
+      onChainGameId.value,
+      gameState.value.selectedWord || '',
+      wordSalt.value,
+      winners,
+      scores
+    )
+    
+    console.log('[Contract] Results submitted, tx:', txHash)
+    
+  } catch (error: any) {
+    console.error('[Contract] Failed to reveal and score:', error)
+    contractError.value = error.message || 'Failed to submit results'
+  } finally {
+    isRevealingScore.value = false
+  }
+}
+
+// Auto-commit word when host selects it
+watch(() => gameState.value.selectedWord, (newWord) => {
+  if (newWord && isHost.value && isConnected.value && onChainGameId.value && !wordSalt.value) {
+    handleCommitWordOnChain(newWord)
+  }
+})
+
+// Auto-submit results when game finishes
+watch(() => gameState.value.status, (newStatus, oldStatus) => {
+  if (newStatus === 'finished' && oldStatus === 'playing' && isHost.value && isConnected.value && onChainGameId.value && wordSalt.value) {
+    // Wait a bit for final state to settle
+    setTimeout(() => {
+      handleRevealAndScoreOnChain()
+    }, 2000)
+  }
+})
+
+// ============ END SMART CONTRACT FUNCTIONS ============
+
 // SIWE Sign In
 async function handleSiweSignIn() {
   if (!address.value) {
@@ -672,6 +918,73 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
                 
                 <p v-if="siweError" class="text-xs text-red-600 dark:text-red-400">
                   {{ siweError }}
+                </p>
+              </div>
+            </div>
+            
+            <!-- Smart Contract Integration -->
+            <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3">
+              <div class="flex items-start gap-2 mb-2">
+                <span class="text-lg">⛓️</span>
+                <div class="flex-1">
+                  <h3 class="text-sm font-semibold text-purple-900 dark:text-purple-100">Blockchain Integration</h3>
+                  <p class="text-xs text-purple-700 dark:text-purple-300 mt-0.5">
+                    Contract: {{ contractAddress.slice(0, 6) }}...{{ contractAddress.slice(-4) }}
+                  </p>
+                  <p v-if="playerWins !== undefined" class="text-xs text-purple-700 dark:text-purple-300 mt-1">
+                    Your total wins: {{ playerWins }}
+                  </p>
+                </div>
+              </div>
+              
+              <div class="space-y-2">
+                <!-- Create Game (Host Only) -->
+                <UButton
+                  v-if="isHost && isConnected && !onChainGameId"
+                  @click="handleCreateGameOnChain"
+                  :loading="isCreatingGame"
+                  color="purple"
+                  size="sm"
+                  block
+                >
+                  Create Game On-Chain
+                </UButton>
+                
+                <!-- Join Game (Players) -->
+                <UButton
+                  v-if="!isHost && isConnected && onChainGameId"
+                  @click="handleJoinGameOnChain"
+                  :loading="isJoiningGame"
+                  color="purple"
+                  size="sm"
+                  block
+                >
+                  Join Game On-Chain
+                </UButton>
+                
+                <!-- Status Messages -->
+                <div v-if="onChainGameId" class="text-xs text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded px-2 py-1.5">
+                  ✓ On-chain Game ID: {{ onChainGameId }}
+                </div>
+                
+                <div v-if="wordSalt" class="text-xs text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded px-2 py-1.5">
+                  ✓ Word committed on-chain
+                </div>
+                
+                <div v-if="isCommittingWord" class="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded px-2 py-1.5">
+                  ⏳ Committing word to blockchain...
+                </div>
+                
+                <div v-if="isRevealingScore" class="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded px-2 py-1.5">
+                  ⏳ Submitting results to blockchain...
+                </div>
+                
+                <p v-if="contractError" class="text-xs text-red-600 dark:text-red-400">
+                  {{ contractError }}
+                </p>
+                
+                <p v-if="!isConnected" class="text-xs text-gray-600 dark:text-gray-400">
+                  Connect wallet to use blockchain features
                 </p>
               </div>
             </div>

@@ -1,9 +1,10 @@
 import { cookieStorage, createConfig, createStorage, http } from '@wagmi/vue'
 import { mainnet, optimism, sepolia } from '@wagmi/vue/chains'
 import { injected, metaMask, walletConnect } from '@wagmi/vue/connectors'
+import { passetHub } from '~/utils/chains'
 
 export const config = createConfig({
-  chains: [mainnet, sepolia, optimism],
+  chains: [passetHub, mainnet, sepolia, optimism],
   connectors: [
     injected(),
     walletConnect({
@@ -16,6 +17,7 @@ export const config = createConfig({
   }),
   ssr: true,
   transports: {
+    [passetHub.id]: http(),
     [mainnet.id]: http(),
     [sepolia.id]: http(),
     [optimism.id]: http(),
