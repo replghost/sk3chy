@@ -3,8 +3,11 @@ import { useRoute } from 'vue-router'
 import { ref, onMounted, watch, computed } from 'vue'
 import { useRuntimeConfig } from '#app'
 import confetti from 'canvas-confetti'
+import { useAccount, useSignMessage } from '@wagmi/vue'
 import YCanvas from '~/components/YCanvas.vue'
+import WalletConnect from '~/components/WalletConnect.vue'
 import { useDrawingGame } from '~/composables/useDrawingGame'
+import { useSIWE } from '~/composables/useSIWE'
 import { getAllDifficulties, type DifficultyLevel } from '~/utils/wordDictionary'
 
 const config = useRuntimeConfig()
@@ -14,9 +17,18 @@ const roomId = `game-${String(route.params.id)}`
 const {
   ready, strokes, peers, guesses, brushColor, brushSize, userId, displayName,
   isHost, canDraw, gameState, timeRemaining,
-  start, addPoint, commitStroke, setCursor, setDisplayName, sendGuess, clearCanvas,
-  generateWordOptions, selectWord, startGame, resetGame, setDifficulty, setDuration
+  start, addPoint, commitStroke, setCursor, setDisplayName, setWalletAddress, sendGuess, clearCanvas,
+  generateWordOptions, selectWord, startGame, resetGame, setDifficulty, setDuration,
+  getYRoom
 } = useDrawingGame(roomId)
+
+// Wallet & SIWE
+const { address, isConnected } = useAccount()
+const { signMessageAsync } = useSignMessage()
+const isSigningIn = ref(false)
+const isSiweAuthenticated = ref(false)
+const siweError = ref<string | null>(null)
+let siweComposable: ReturnType<typeof useSIWE> | null = null
 
 const guessInput = ref('')
 const guessesContainer = ref<HTMLElement | null>(null)
@@ -400,6 +412,47 @@ watch(() => gameState.value.winnerId, (newWinnerId, oldWinnerId) => {
   }
 })
 
+// SIWE Sign In
+async function handleSiweSignIn() {
+  if (!address.value) {
+    siweError.value = 'Please connect your wallet first'
+    return
+  }
+  
+  if (!siweComposable) {
+    siweError.value = 'SIWE not initialized yet, please wait'
+    return
+  }
+  
+  isSigningIn.value = true
+  siweError.value = null
+  
+  try {
+    await siweComposable.signIn(address.value, async (message: string) => {
+      return await signMessageAsync({ message })
+    })
+    
+    isSiweAuthenticated.value = true
+    console.log('[SIWE] Successfully authenticated:', address.value)
+  } catch (err: any) {
+    console.error('[SIWE] Sign in error:', err)
+    siweError.value = err.message || 'Failed to sign in'
+  } finally {
+    isSigningIn.value = false
+  }
+}
+
+// Check if a peer is SIWE authenticated
+function isPeerAuthenticated(peerId: string): boolean {
+  if (!siweComposable) return false
+  const verifiedUsers = siweComposable.getVerifiedUsers()
+  // Check if any verified address matches this peer's awareness state
+  const peer = peers.value.find(p => p.id === peerId)
+  if (!peer?.address) return false
+  const peerAddress = typeof peer.address === 'string' ? peer.address : String(peer.address)
+  return verifiedUsers.has(peerAddress.toLowerCase())
+}
+
 onMounted(() => {
   // Build ICE servers array - keep it minimal to avoid "5+ servers" warning
   const iceServers: RTCIceServer[] = [
@@ -424,6 +477,28 @@ onMounted(() => {
   }
 
   start({ iceServers })
+})
+
+// Initialize SIWE when room is ready
+watch(ready, (isReady) => {
+  if (isReady && !siweComposable) {
+    const yroom = getYRoom()
+    if (yroom) {
+      siweComposable = useSIWE(yroom)
+      console.log('[SIWE] Initialized')
+    }
+  }
+})
+
+// Watch wallet connection and update awareness
+watch([address, isConnected], ([newAddress, newIsConnected]) => {
+  // Update awareness with wallet info
+  console.log('[Wallet] Status changed:', { address: newAddress, connected: newIsConnected })
+  if (newIsConnected && newAddress) {
+    setWalletAddress(newAddress)
+  } else {
+    setWalletAddress(null)
+  }
 })
 </script>
 
@@ -465,13 +540,15 @@ onMounted(() => {
                 :style="{ backgroundColor: peer.color || '#0aa' }"
               />
               <div class="flex-1 min-w-0">
-                <div class="text-sm font-semibold truncate">
+                <div class="text-sm font-semibold truncate flex items-center gap-1">
                   {{ peer.displayName || 'Anonymous' }}
+                  <span v-if="isPeerAuthenticated(peer.id)" class="text-green-500" title="SIWE Authenticated">🔐</span>
                   <span v-if="peer.id === userId" class="text-xs text-gray-500">(you)</span>
                 </div>
                 <div class="text-xs text-gray-500 dark:text-gray-400">
                   <span v-if="peer.id === gameState.hostId">🎨 Host</span>
                   <span v-else>👀 Player</span>
+                  <span v-if="isPeerAuthenticated(peer.id)" class="ml-1 text-green-600 dark:text-green-400">· Verified</span>
                 </div>
               </div>
             </div>
@@ -483,14 +560,51 @@ onMounted(() => {
           </div>
 
           <!-- Your Name Input -->
-          <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
-            <label class="block text-sm font-medium mb-2">Your Name</label>
-            <UInput 
-              v-model="displayName" 
-              placeholder="Enter your name"
-              size="md"
-              @update:model-value="setDisplayName"
-            />
+          <div class="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
+            <div>
+              <label class="block text-sm font-medium mb-2">Your Name</label>
+              <UInput 
+                v-model="displayName" 
+                placeholder="Enter your name"
+                size="md"
+                @update:model-value="setDisplayName"
+              />
+            </div>
+            
+            <!-- SIWE Authentication (Optional) -->
+            <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
+              <div class="flex items-start gap-2 mb-2">
+                <span class="text-lg">🔐</span>
+                <div class="flex-1">
+                  <h3 class="text-sm font-semibold text-blue-900 dark:text-blue-100">Optional: Sign In with Ethereum</h3>
+                  <p class="text-xs text-blue-700 dark:text-blue-300 mt-0.5">Verify your identity on-chain (optional)</p>
+                </div>
+              </div>
+              
+              <div class="space-y-2">
+                <WalletConnect />
+                
+                <UButton
+                  v-if="isConnected && !isSiweAuthenticated"
+                  @click="handleSiweSignIn"
+                  :loading="isSigningIn"
+                  color="primary"
+                  size="sm"
+                  block
+                >
+                  Sign Message to Verify
+                </UButton>
+                
+                <div v-if="isSiweAuthenticated" class="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded px-2 py-1.5">
+                  <span>✓</span>
+                  <span>Verified as {{ address?.slice(0, 6) }}...{{ address?.slice(-4) }}</span>
+                </div>
+                
+                <p v-if="siweError" class="text-xs text-red-600 dark:text-red-400">
+                  {{ siweError }}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -671,6 +785,7 @@ onMounted(() => {
                 {{ peer.displayName || 'Anonymous' }}
                 <span v-if="peer.id === gameState.hostId">🎨</span>
                 <span v-if="peer.id === gameState.winnerId">🏆</span>
+                <span v-if="isPeerAuthenticated(peer.id)" class="text-green-500" title="SIWE Verified">🔐</span>
               </span>
             </div>
           </div>
@@ -739,13 +854,15 @@ onMounted(() => {
                 :style="{ backgroundColor: peer.color || '#0aa' }"
               />
               <div class="flex-1 min-w-0 text-left">
-                <div class="text-sm font-semibold truncate">
+                <div class="text-sm font-semibold truncate flex items-center gap-1">
                   {{ peer.displayName || 'Anonymous' }}
+                  <span v-if="isPeerAuthenticated(peer.id)" class="text-green-500" title="SIWE Authenticated">🔐</span>
                   <span v-if="peer.id === userId" class="text-xs text-gray-500">(you)</span>
                 </div>
                 <div class="text-xs text-gray-500 dark:text-gray-400">
                   <span v-if="peer.id === gameState.hostId">🎨 Host</span>
                   <span v-else>👀 Player</span>
+                  <span v-if="isPeerAuthenticated(peer.id)" class="ml-1 text-green-600 dark:text-green-400">· Verified</span>
                 </div>
               </div>
             </div>

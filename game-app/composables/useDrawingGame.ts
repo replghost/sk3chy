@@ -423,6 +423,11 @@ export function useDrawingGame(roomId: string) {
     yroom.awareness.setLocalStateField('displayName', name)
   }
 
+  function setWalletAddress(address: string | null) {
+    if (!yroom) return
+    yroom.awareness.setLocalStateField('address', address)
+  }
+
   function sendGuess(text: string) {
     if (!text.trim() || gameState.value.status !== 'playing') return
     const guess: Guess = {
@@ -473,7 +478,9 @@ export function useDrawingGame(roomId: string) {
     ready, strokes, peers, guesses, brushColor, brushSize, userId, displayName,
     isHost, canDraw, gameState, timeRemaining,
     // api
-    start, addPoint, commitStroke, setCursor, setDisplayName, sendGuess, clearCanvas,
-    generateWordOptions, selectWord, startGame, resetGame, setDifficulty, setDuration
+    start, addPoint, commitStroke, setCursor, setDisplayName, setWalletAddress, sendGuess, clearCanvas,
+    generateWordOptions, selectWord, startGame, resetGame, setDifficulty, setDuration,
+    // yroom access for SIWE
+    getYRoom: () => yroom
   }
 }
