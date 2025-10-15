@@ -802,7 +802,8 @@ onMounted(() => {
 
   // Add TURN server only if credentials are configured and valid
   // Use only 2 TURN URLs to avoid "5+ servers" warning
-  if (config.public.turnUsername && config.public.turnCredential) {
+  if (config.public.turnUsername && config.public.turnCredential && 
+      config.public.turnUsername.length > 0 && config.public.turnCredential.length > 0) {
     console.log('[Game] TURN server configured')
     iceServers.push({
       urls: [
@@ -813,7 +814,7 @@ onMounted(() => {
       credential: config.public.turnCredential
     })
   } else {
-    console.log('[Game] Using STUN-only (no TURN servers)')
+    console.log('[Game] Using STUN-only (no TURN servers - this is fine for local testing)')
   }
 
   start({ iceServers })
