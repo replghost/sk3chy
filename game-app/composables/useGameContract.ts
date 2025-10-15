@@ -1,5 +1,5 @@
 import { useWriteContract, useWaitForTransactionReceipt, useReadContract, useAccount, useClient } from '@wagmi/vue'
-import { keccak256, encodePacked, type Address, parseAbiItem, createPublicClient, http, type TransactionReceipt } from 'viem'
+import { keccak256, encodePacked, type Address, parseAbiItem, createPublicClient, http, type TransactionReceipt, decodeEventLog } from 'viem'
 import { computed, ref } from 'vue'
 import contractABI from '~/utils/abi/Sk3chyGame.json'
 import { passetHub } from '~/utils/chains'
@@ -37,6 +37,18 @@ export function useGameContract() {
       transactionHistory.value = transactionHistory.value.slice(0, 50)
     }
     console.log('[Contract] Transaction logged:', log)
+  }
+  
+  // Helper to update existing transaction log
+  function updateTransactionLog(hash: `0x${string}`, updates: Partial<TransactionLog>) {
+    const index = transactionHistory.value.findIndex(tx => tx.hash === hash)
+    if (index !== -1) {
+      transactionHistory.value[index] = {
+        ...transactionHistory.value[index],
+        ...updates
+      }
+      console.log('[Contract] Transaction updated:', transactionHistory.value[index])
+    }
   }
   
   // Helper to get explorer URL
@@ -106,19 +118,14 @@ export function useGameContract() {
         console.error('[Contract] Revert reason:', errorMessage)
       }
       
-      const log: TransactionLog = {
-        hash,
-        type,
-        timestamp: Date.now(),
+      // Update existing pending transaction instead of creating new entry
+      updateTransactionLog(hash, {
         status: success ? 'success' : 'failed',
         blockNumber: receipt.blockNumber,
         gasUsed: receipt.gasUsed,
-        explorerUrl: getExplorerUrl(hash),
         error: errorMessage,
         details
-      }
-      
-      logTransaction(log)
+      })
       
       console.log(`[Contract] Transaction ${success ? 'succeeded' : 'failed'}:`, {
         hash,
@@ -141,16 +148,11 @@ export function useGameContract() {
       return receipt
     } catch (error: any) {
       console.error(`[Contract] Transaction failed or timed out:`, error)
-      const log: TransactionLog = {
-        hash,
-        type,
-        timestamp: Date.now(),
+      // Update existing pending transaction
+      updateTransactionLog(hash, {
         status: 'failed',
-        error: error.message || 'Transaction failed',
-        explorerUrl: getExplorerUrl(hash),
-        details
-      }
-      logTransaction(log)
+        error: error.message || 'Transaction failed'
+      })
       throw error
     }
   }
@@ -180,10 +182,59 @@ export function useGameContract() {
         explorerUrl: getExplorerUrl(hash)
       })
       
-      // Wait for confirmation in background
-      waitAndLogTransaction(hash, 'createGame').catch(console.error)
+      // Wait for confirmation and parse game ID
+      const publicClient = createPublicClient({
+        chain: passetHub,
+        transport: http()
+      })
       
-      return hash
+      console.log('[Contract] Waiting for transaction confirmation to get game ID...')
+      const receipt = await publicClient.waitForTransactionReceipt({ 
+        hash,
+        confirmations: 1
+      })
+      
+      // Parse GameCreated event to get the game ID
+      let gameId: number | null = null
+      if (receipt.logs.length > 0) {
+        try {
+          const gameCreatedEvent = parseAbiItem('event GameCreated(uint256 indexed gameId, address indexed host, uint256 timestamp)')
+          const logs = receipt.logs.filter(log => {
+            try {
+              const decoded = decodeEventLog({
+                abi: [gameCreatedEvent],
+                data: log.data,
+                topics: log.topics
+              })
+              return decoded.eventName === 'GameCreated'
+            } catch {
+              return false
+            }
+          })
+          
+          if (logs.length > 0) {
+            const decoded = decodeEventLog({
+              abi: [gameCreatedEvent],
+              data: logs[0].data,
+              topics: logs[0].topics
+            })
+            gameId = Number(decoded.args.gameId)
+            console.log('[Contract] Game created with ID:', gameId)
+          }
+        } catch (error) {
+          console.error('[Contract] Failed to parse GameCreated event:', error)
+        }
+      }
+      
+      // Update transaction log with game ID
+      updateTransactionLog(hash, {
+        status: receipt.status === 'success' ? 'success' : 'failed',
+        blockNumber: receipt.blockNumber,
+        gasUsed: receipt.gasUsed,
+        details: { gameId }
+      })
+      
+      return { hash, gameId }
     } catch (error: any) {
       console.error('[Contract] Failed to create game:', error)
       console.error('[Contract] Error details:', {

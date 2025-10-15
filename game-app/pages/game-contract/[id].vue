@@ -515,12 +515,16 @@ async function handleCreateGameOnChain() {
     isCreatingGame.value = true
     contractError.value = null
     
-    const txHash = await createGameOnChain()
-    console.log('[Contract] Game created, tx:', txHash)
+    const result = await createGameOnChain()
+    console.log('[Contract] Game created, tx:', result.hash)
     
-    // TODO: Parse gameId from transaction receipt
-    // For now, use room ID as placeholder
-    onChainGameId.value = parseInt(String(route.params.id))
+    if (result.gameId !== null && result.gameId !== undefined) {
+      onChainGameId.value = result.gameId
+      console.log('[Contract] On-chain game ID set to:', result.gameId)
+    } else {
+      console.warn('[Contract] Could not extract game ID from transaction')
+      contractError.value = 'Game created but could not get game ID'
+    }
     
   } catch (error: any) {
     console.error('[Contract] Failed to create game:', error)
@@ -1196,12 +1200,14 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
               <UButton 
                 v-if="isHost"
                 @click="generateWordOptions"
+                :disabled="isCreatingGame"
+                :loading="isCreatingGame"
                 color="primary"
                 size="xl"
                 block
                 class="font-bold text-lg"
               >
-                🎮 Start Game
+                {{ isCreatingGame ? 'Creating Game...' : '🎮 Start Game' }}
               </UButton>
               <div v-else class="text-center p-4">
                 <p class="text-gray-500 dark:text-gray-400">Waiting for host to start...</p>
