@@ -10,6 +10,10 @@
         </NuxtLink>
 
         <nav class="flex items-center gap-2">
+          <UButton variant="ghost" to="/stats" size="sm" color="gray" :class="{ 'underline decoration-2 underline-offset-8': currentPath === '/stats' }">Stats</UButton>
+          
+          <UDivider orientation="vertical" class="h-6 mx-2" />
+          
           <UButton variant="ghost" to="/game/1" size="sm" color="gray" :class="{ 'underline decoration-2 underline-offset-8': currentPath === '/game/1' }">Room 1</UButton>
           <UButton variant="ghost" to="/game/2" size="sm" color="gray" :class="{ 'underline decoration-2 underline-offset-8': currentPath === '/game/2' }">Room 2</UButton>
           <UButton variant="ghost" to="/game/3" size="sm" color="gray" :class="{ 'underline decoration-2 underline-offset-8': currentPath === '/game/3' }">Room 3</UButton>

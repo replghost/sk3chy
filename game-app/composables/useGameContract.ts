@@ -1,7 +1,8 @@
-import { useWriteContract, useWaitForTransactionReceipt, useReadContract, useAccount } from '@wagmi/vue'
-import { keccak256, encodePacked, type Address } from 'viem'
+import { useWriteContract, useWaitForTransactionReceipt, useReadContract, useAccount, useClient } from '@wagmi/vue'
+import { keccak256, encodePacked, type Address, parseAbiItem, createPublicClient, http } from 'viem'
 import { computed } from 'vue'
 import contractABI from '~/utils/abi/Sk3chyGame.json'
+import { passetHub } from '~/utils/chains'
 
 // Contract address on PAsset Hub testnet
 const CONTRACT_ADDRESS = '0xd8Ceb2B3dCdC96F903a4A8927C8ed6B6265293d6' as const
@@ -122,6 +123,118 @@ export function useGameContract() {
     })
   }
   
+  // Query past games from events
+  async function getRecentGames(limit = 20) {
+    try {
+      const publicClient = createPublicClient({
+        chain: passetHub,
+        transport: http()
+      })
+      
+      const logs = await publicClient.getLogs({
+        address: CONTRACT_ADDRESS,
+        event: parseAbiItem('event GameCompleted(uint256 indexed gameId, address indexed host, string word, address[] winners, uint256[] scores, uint256 timestamp)'),
+        fromBlock: 0n,
+        toBlock: 'latest'
+      })
+      
+      const games = logs.map(log => ({
+        gameId: Number(log.args.gameId),
+        host: log.args.host as Address,
+        word: log.args.word as string,
+        winners: log.args.winners as Address[],
+        scores: (log.args.scores as bigint[])?.map(s => Number(s)) || [],
+        timestamp: Number(log.args.timestamp),
+        blockNumber: Number(log.blockNumber),
+        transactionHash: log.transactionHash
+      }))
+      
+      // Return most recent games
+      return games.slice(-limit).reverse()
+    } catch (error) {
+      console.error('[Contract] Failed to fetch recent games:', error)
+      return []
+    }
+  }
+  
+  // Get games by specific player (as host)
+  async function getGamesByHost(hostAddress: Address) {
+    try {
+      const publicClient = createPublicClient({
+        chain: passetHub,
+        transport: http()
+      })
+      
+      const logs = await publicClient.getLogs({
+        address: CONTRACT_ADDRESS,
+        event: parseAbiItem('event GameCompleted(uint256 indexed gameId, address indexed host, string word, address[] winners, uint256[] scores, uint256 timestamp)'),
+        args: {
+          host: hostAddress
+        },
+        fromBlock: 0n,
+        toBlock: 'latest'
+      })
+      
+      return logs.map(log => ({
+        gameId: Number(log.args.gameId),
+        host: log.args.host as Address,
+        word: log.args.word as string,
+        winners: log.args.winners as Address[],
+        scores: (log.args.scores as bigint[])?.map(s => Number(s)) || [],
+        timestamp: Number(log.args.timestamp),
+        blockNumber: Number(log.blockNumber)
+      }))
+    } catch (error) {
+      console.error('[Contract] Failed to fetch games by host:', error)
+      return []
+    }
+  }
+  
+  // Get leaderboard data
+  async function getLeaderboard() {
+    try {
+      const publicClient = createPublicClient({
+        chain: passetHub,
+        transport: http()
+      })
+      
+      const logs = await publicClient.getLogs({
+        address: CONTRACT_ADDRESS,
+        event: parseAbiItem('event GameCompleted(uint256 indexed gameId, address indexed host, string word, address[] winners, uint256[] scores, uint256 timestamp)'),
+        fromBlock: 0n,
+        toBlock: 'latest'
+      })
+      
+      // Count wins per player
+      const playerStats = new Map<Address, { wins: number, totalScore: number, gamesPlayed: number }>()
+      
+      logs.forEach(log => {
+        const winners = log.args.winners as Address[]
+        const scores = (log.args.scores as bigint[])?.map(s => Number(s)) || []
+        
+        winners.forEach((winner, index) => {
+          const stats = playerStats.get(winner) || { wins: 0, totalScore: 0, gamesPlayed: 0 }
+          stats.wins += 1
+          stats.totalScore += scores[index] || 0
+          stats.gamesPlayed += 1
+          playerStats.set(winner, stats)
+        })
+      })
+      
+      // Convert to array and sort by wins
+      return Array.from(playerStats.entries())
+        .map(([address, stats]) => ({
+          address,
+          ...stats,
+          avgScore: stats.gamesPlayed > 0 ? Math.round(stats.totalScore / stats.gamesPlayed) : 0
+        }))
+        .sort((a, b) => b.wins - a.wins)
+    } catch (error) {
+      console.error('[Contract] Failed to fetch leaderboard:', error)
+      return []
+    }
+  }
+  
   return {
     // Contract info
     contractAddress: CONTRACT_ADDRESS,
@@ -135,6 +248,11 @@ export function useGameContract() {
     // Read functions
     useGameData,
     usePlayerWins,
+    
+    // Event queries
+    getRecentGames,
+    getGamesByHost,
+    getLeaderboard,
     
     // State
     isPending,
