@@ -573,6 +573,21 @@ async function handleJoinGameOnChain() {
   }
 }
 
+// Handle start game - commit to blockchain first if needed, then start
+async function handleStartGame() {
+  // If connected to blockchain and have a game ID, commit word first
+  if (isConnected.value && onChainGameId.value && selectedWordLocal.value && !wordSalt.value) {
+    await handleCommitWordOnChain(selectedWordLocal.value)
+    // Only start game if commit succeeded (wordSalt will be set)
+    if (wordSalt.value) {
+      startGame()
+    }
+  } else {
+    // No blockchain or already committed, just start
+    startGame()
+  }
+}
+
 // Commit word hash on-chain (called by host after selecting word)
 async function handleCommitWordOnChain(word: string) {
   if (!isConnected.value || !isHost.value) return
@@ -1448,10 +1463,6 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
               @click="() => { 
                 selectWord(word); 
                 selectedWordLocal = word;
-                // Auto-commit to blockchain if game is on-chain
-                if (isConnected && onChainGameId && !wordSalt) {
-                  handleCommitWordOnChain(word);
-                }
               }"
               class="group relative p-8 rounded-xl border-4 transition-all hover:scale-105"
               :class="selectedWordLocal === word 
@@ -1470,18 +1481,25 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
           </div>
 
           <!-- Start Button -->
-          <div class="flex justify-center">
+          <div class="flex flex-col items-center gap-3">
             <UButton
               v-if="gameState.wordCommitment"
-              @click="startGame"
+              @click="handleStartGame"
+              :disabled="isCommittingWord"
+              :loading="isCommittingWord"
               color="primary"
               size="xl"
               class="font-bold text-lg px-12"
             >
-              🎮 Start Drawing! ({{ gameState.duration < 60 ? `${gameState.duration}s` : `${Math.floor(gameState.duration / 60)}m` }})
+              {{ isCommittingWord ? 'Committing to Blockchain...' : `🎮 Start Drawing! (${gameState.duration < 60 ? `${gameState.duration}s` : `${Math.floor(gameState.duration / 60)}m`})` }}
             </UButton>
             <div v-else class="text-gray-500 dark:text-gray-400">
               Select a word to continue...
+            </div>
+            
+            <!-- Show blockchain status -->
+            <div v-if="isConnected && onChainGameId && gameState.wordCommitment" class="text-xs text-gray-500">
+              {{ wordSalt ? '✓ Word committed on-chain' : 'Will commit word to blockchain when you start' }}
             </div>
           </div>
         </div>
