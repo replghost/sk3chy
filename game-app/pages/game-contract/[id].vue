@@ -618,6 +618,17 @@ async function handleRevealAndScoreOnChain() {
     return
   }
   
+  // Wait for commit to finish if it's in progress
+  if (isCommittingWord.value) {
+    console.log('[Contract] Waiting for word commit to finish...')
+    contractError.value = 'Waiting for word commitment to complete...'
+    // Wait up to 30 seconds for commit to finish
+    for (let i = 0; i < 60; i++) {
+      await new Promise(resolve => setTimeout(resolve, 500))
+      if (!isCommittingWord.value) break
+    }
+  }
+  
   if (!wordSalt.value) {
     contractError.value = 'Word salt not found - did you commit the word?'
     console.error('[Contract] No salt found!')
@@ -679,7 +690,15 @@ async function handleRevealAndScoreOnChain() {
 
 // Auto-commit word when host selects it
 watch(() => gameState.value.selectedWord, (newWord) => {
+  console.log('[Contract] Word changed:', newWord, {
+    isHost: isHost.value,
+    isConnected: isConnected.value,
+    onChainGameId: onChainGameId.value,
+    hasSalt: !!wordSalt.value
+  })
+  
   if (newWord && isHost.value && isConnected.value && onChainGameId.value && !wordSalt.value) {
+    console.log('[Contract] Auto-committing word on selection')
     handleCommitWordOnChain(newWord)
   }
 })
@@ -1400,7 +1419,14 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
             <button
               v-for="word in gameState.wordOptions"
               :key="word"
-              @click="() => { selectWord(word); selectedWordLocal = word }"
+              @click="() => { 
+                selectWord(word); 
+                selectedWordLocal = word;
+                // Auto-commit to blockchain if game is on-chain
+                if (isConnected && onChainGameId && !wordSalt) {
+                  handleCommitWordOnChain(word);
+                }
+              }"
               class="group relative p-8 rounded-xl border-4 transition-all hover:scale-105"
               :class="selectedWordLocal === word 
                 ? 'border-primary bg-primary/10 shadow-lg' 
