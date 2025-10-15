@@ -56,6 +56,7 @@ const isCreatingGame = ref(false)
 const isJoiningGame = ref(false)
 const isCommittingWord = ref(false)
 const isRevealingScore = ref(false)
+const isWaitingForBlockchain = ref(false) // For non-host players waiting for host to submit
 const contractError = ref<string | null>(null)
 
 // Clear contract state when starting a new game
@@ -436,8 +437,12 @@ watch(() => gameState.value.status, async (newStatus, oldStatus) => {
       console.log('[Game Page] Skipping blockchain submission')
       
       // If connected to blockchain but not host, poll to wait for host to complete the game
-      if (isConnected.value && onChainGameId.value) {
+      if (isConnected.value && gameState.value.onChainGameId) {
         console.log('[Game Page] Non-host polling blockchain for game completion...')
+        console.log('[Game Page] Using on-chain game ID:', gameState.value.onChainGameId)
+        
+        // Show loading overlay for non-host
+        isWaitingForBlockchain.value = true
         
         const publicClient = createPublicClient({
           chain: passetHub,
@@ -455,7 +460,7 @@ watch(() => gameState.value.status, async (newStatus, oldStatus) => {
               address: contractAddress as `0x${string}`,
               abi: contractABI.abi,
               functionName: 'getGame',
-              args: [BigInt(onChainGameId.value)]
+              args: [BigInt(gameState.value.onChainGameId!)]
             }) as any
             
             // Check if game is no longer active (host completed it)
@@ -477,6 +482,9 @@ watch(() => gameState.value.status, async (newStatus, oldStatus) => {
         if (!gameCompleted) {
           console.log('[Game Page] Timeout waiting for blockchain completion, showing modal anyway')
         }
+        
+        // Clear waiting flag
+        isWaitingForBlockchain.value = false
       } else {
         console.log('[Game Page] No blockchain, showing modal immediately')
       }
@@ -538,6 +546,22 @@ watch(() => showFinishModal.value, (isShowing, wasShowing) => {
 })
 
 // ============ SMART CONTRACT FUNCTIONS ============
+
+// Handle start game flow - create on-chain if needed, then generate words
+async function handleStartGameFlow() {
+ // If wallet connected and game not created on-chain yet, create it first
+ if (isConnected.value && !onChainGameId.value) {
+ console.log('[Game] Creating game on-chain before starting...')
+ await handleCreateGameOnChain()
+ // Only proceed if game was created successfully
+ if (!onChainGameId.value) {
+ console.error('[Game] Failed to create game on-chain, not starting')
+ return
+ }
+ }
+ // Proceed to word selection
+ generateWordOptions()
+}
 
 // Generate random salt for commit-reveal
 function generateSalt(): string {
@@ -610,6 +634,14 @@ async function handleCreateGameOnChain() {
     
     if (result.gameId !== null && result.gameId !== undefined) {
       onChainGameId.value = result.gameId
+      
+      // Share with all players via Y.js
+      const yroom = getYRoom()
+      if (yroom) {
+        yroom.game.set('onChainGameId', result.gameId)
+        console.log('[Contract] On-chain game ID set in Y.js:', result.gameId)
+      }
+      gameState.value.onChainGameId = result.gameId
       console.log('[Contract] On-chain game ID set to:', result.gameId)
     } else {
       console.warn('[Contract] Could not extract game ID from transaction')
@@ -1237,17 +1269,7 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
               </div>
               
               <div class="space-y-2">
-                <!-- Create Game (Host Only) -->
-                <UButton
-                  v-if="isHost && isConnected && !onChainGameId"
-                  @click="handleCreateGameOnChain"
-                  :loading="isCreatingGame"
-                  color="purple"
-                  size="sm"
-                  block
-                >
-                  Create Game On-Chain
-                </UButton>
+                
                 
                 <!-- Join Game (Players) -->
                 <UButton
@@ -1290,9 +1312,9 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
 
             <!-- Start Button -->
             <div class="pt-4">
-              <UButton 
+              <UButton
                 v-if="isHost"
-                @click="generateWordOptions"
+                @click="handleStartGameFlow"
                 :disabled="isCreatingGame"
                 :loading="isCreatingGame"
                 color="primary"
@@ -1300,7 +1322,7 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
                 block
                 class="font-bold text-lg"
               >
-                {{ isCreatingGame ? 'Creating Game...' : '🎮 Start Game' }}
+                {{ isCreatingGame ? 'Creating Game On-Chain...' : (isConnected && !onChainGameId ? '🎮 Start Game (On-Chain)' : '🎮 Start Game') }}
               </UButton>
               <div v-else class="text-center p-4">
                 <p class="text-gray-500 dark:text-gray-400">Waiting for host to start...</p>
@@ -1683,11 +1705,15 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
   </section>
 
   <!-- Blockchain Submission Loading Overlay -->
-  <div v-if="isRevealingScore && gameState.status === 'finished'" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center" style="z-index: 100000;">
+  <div v-if="(isRevealingScore || isWaitingForBlockchain) && gameState.status === 'finished'" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center" style="z-index: 100000;">
     <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl p-8 text-center max-w-md">
       <div class="text-4xl mb-4">⏳</div>
-      <h3 class="text-xl font-bold mb-2">Submitting Results to Blockchain</h3>
-      <p class="text-gray-600 dark:text-gray-400 mb-4">Please wait while we commit the game results on-chain...</p>
+      <h3 class="text-xl font-bold mb-2">
+        {{ isRevealingScore ? 'Submitting Results to Blockchain' : 'Waiting for Results' }}
+      </h3>
+      <p class="text-gray-600 dark:text-gray-400 mb-4">
+        {{ isRevealingScore ? 'Please wait while we commit the game results on-chain...' : 'Waiting for host to submit results to blockchain...' }}
+      </p>
       <div class="flex justify-center">
         <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>

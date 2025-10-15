@@ -42,6 +42,7 @@ type GameState = {
   winnerId: string | null
   winnerName: string | null
   commitmentVerified: boolean | null  // Verification result
+  onChainGameId: number | null  // Blockchain game ID (shared by host)
 }
 
 // Generate a random bright color for each user
@@ -72,7 +73,8 @@ export function useDrawingGame(roomId: string) {
     duration: 180,
     winnerId: null,
     winnerName: null,
-    commitmentVerified: null
+    commitmentVerified: null,
+    onChainGameId: null
   })
   const timeRemaining = ref(0)
   let timerInterval: ReturnType<typeof setInterval> | null = null
@@ -242,7 +244,8 @@ export function useDrawingGame(roomId: string) {
       duration: ygame.get('duration') || 180,
       winnerId: ygame.get('winnerId') || null,
       winnerName: ygame.get('winnerName') || null,
-      commitmentVerified: ygame.get('commitmentVerified') || null
+      commitmentVerified: ygame.get('commitmentVerified') || null,
+      onChainGameId: ygame.get('onChainGameId') || null
     }
 
     // Verify commitment when word is revealed (async, non-blocking)
