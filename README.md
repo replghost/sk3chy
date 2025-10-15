@@ -107,10 +107,41 @@ bun run dev
 
 The game app will be available at `http://localhost:3000` and the signaling server at `ws://localhost:4444`.
 
+**Game Versions:**
+
+The app includes three different versions of the game with progressive features:
+
+- **`/game/[id]`** - Basic P2P game with no blockchain features
+  - Pure WebRTC multiplayer
+  - Local cryptographic commitments only
+  - Example: `http://localhost:3000/game/1`
+
+- **`/game-siwe/[id]`** - Adds SIWE (Sign-In With Ethereum) authentication
+  - Optional wallet connection
+  - Cryptographic signature-based identity verification
+  - No on-chain transactions
+  - Example: `http://localhost:3000/game-siwe/2`
+
+- **`/game-contract/[id]`** - Full blockchain integration (recommended)
+  - SIWE authentication support
+  - Optional on-chain game creation and result recording
+  - Smart contract commit-reveal mechanics
+  - Track wins and game history on-chain
+  - Example: `http://localhost:3000/game-contract/3`
+
 **Testing the connection:**
 - Visit `http://localhost:3000/test-signaling` to test the signaling server connection
 - Open multiple browser tabs/windows to test peer-to-peer connections
 - Join the same room ID in different tabs to see peers connect
+- Try different game versions by changing the URL path
+
+> **⚠️ Local Testing Limitations:**
+> - WebRTC connections work between **multiple tabs in the same browser** locally
+> - Cross-browser connections (e.g., Chrome ↔ Firefox) typically **don't work on localhost**
+> - For cross-browser or cross-device testing, you need to:
+>   1. Deploy the app to a public URL (HTTPS required)
+>   2. Configure TURN servers for NAT traversal (already configured in the app)
+> - This is a WebRTC limitation, not a bug in the app
 
 ### Production
 
