@@ -4,18 +4,107 @@
       <div class="flex items-center justify-between h-14 md:h-16 px-2 md:px-0">
         <div class="flex items-center gap-2">
           <!-- Mobile menu dropdown - left side -->
-          <UDropdown 
-            :items="menuItems" 
-            :popper="{ placement: 'bottom-start' }"
-            class="md:hidden"
-          >
+          <UPopover :popper="{ placement: 'bottom-start' }" class="md:hidden">
             <UButton 
               icon="i-heroicons-bars-3" 
               variant="ghost" 
               color="gray" 
               size="sm"
             />
-          </UDropdown>
+            
+            <template #panel="{ close }">
+              <div class="p-3 w-64 space-y-3">
+                <!-- Stats -->
+                <UButton 
+                  variant="ghost" 
+                  to="/stats" 
+                  size="sm" 
+                  color="gray"
+                  block
+                  class="justify-start"
+                  @click="close"
+                >
+                  <template #leading>
+                    <UIcon name="i-heroicons-chart-bar" />
+                  </template>
+                  Stats
+                </UButton>
+                
+                <UDivider />
+                
+                <!-- Quick Rooms -->
+                <div class="space-y-1">
+                  <p class="text-xs font-medium text-gray-500 dark:text-gray-400 px-2">Quick Rooms</p>
+                  <UButton 
+                    variant="ghost" 
+                    to="/game-contract/1" 
+                    size="sm" 
+                    color="gray"
+                    block
+                    class="justify-start"
+                    @click="close"
+                  >
+                    <template #leading>
+                      <UIcon name="i-heroicons-user-group" />
+                    </template>
+                    Room 1
+                  </UButton>
+                  <UButton 
+                    variant="ghost" 
+                    to="/game-contract/2" 
+                    size="sm" 
+                    color="gray"
+                    block
+                    class="justify-start"
+                    @click="close"
+                  >
+                    <template #leading>
+                      <UIcon name="i-heroicons-user-group" />
+                    </template>
+                    Room 2
+                  </UButton>
+                  <UButton 
+                    variant="ghost" 
+                    to="/game-contract/3" 
+                    size="sm" 
+                    color="gray"
+                    block
+                    class="justify-start"
+                    @click="close"
+                  >
+                    <template #leading>
+                      <UIcon name="i-heroicons-user-group" />
+                    </template>
+                    Room 3
+                  </UButton>
+                </div>
+                
+                <UDivider />
+                
+                <!-- Enter Room -->
+                <div>
+                  <label class="block text-xs font-medium mb-1.5 text-gray-700 dark:text-gray-300">Enter Room</label>
+                  <div class="flex gap-2">
+                    <UInput 
+                      v-model="customRoomId"
+                      placeholder="Room ID"
+                      size="sm"
+                      class="flex-1"
+                      @keydown.enter="() => { navigateToRoom(customRoomId); close(); }"
+                    />
+                    <UButton 
+                      @click="() => { navigateToRoom(customRoomId); close(); }"
+                      :disabled="!customRoomId"
+                      size="sm"
+                      color="primary"
+                    >
+                      Go
+                    </UButton>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </UPopover>
           
           <NuxtLink 
             to="/" 
@@ -85,26 +174,15 @@
 
 <script setup lang="ts">
 const route = useRoute()
+const router = useRouter()
 const currentPath = computed(() => route.path)
 
-const menuItems = [
-  [{
-    label: 'Stats',
-    icon: 'i-heroicons-chart-bar',
-    to: '/stats'
-  }],
-  [{
-    label: 'Room 1',
-    icon: 'i-heroicons-user-group',
-    to: '/game-contract/1'
-  }, {
-    label: 'Room 2',
-    icon: 'i-heroicons-user-group',
-    to: '/game-contract/2'
-  }, {
-    label: 'Room 3',
-    icon: 'i-heroicons-user-group',
-    to: '/game-contract/3'
-  }]
-]
+const customRoomId = ref('')
+
+function navigateToRoom(roomId: string) {
+  if (roomId) {
+    router.push(`/game-contract/${roomId}`)
+    customRoomId.value = ''
+  }
+}
 </script>
