@@ -178,13 +178,16 @@ export function useDrawingGame(roomId: string) {
     // awareness update
     yroom.awareness.on('change', () => {
       const states = yroom.awareness.getStates()
-      const allPeers = Array.from(states.values())
       
-      // Deduplicate peers by user ID (keep the most recent one)
+      // Deduplicate peers by user ID (keep the most recent one based on clientID)
       const peerMap = new Map()
-      allPeers.forEach((peer: any) => {
+      states.forEach((peer: any, clientId: number) => {
         if (peer.id) {
-          peerMap.set(peer.id, peer)
+          const existing = peerMap.get(peer.id)
+          // Keep the peer with higher clientID (more recent connection)
+          if (!existing || clientId > existing.clientId) {
+            peerMap.set(peer.id, { ...peer, clientId })
+          }
         }
       })
       
