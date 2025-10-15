@@ -3,7 +3,7 @@ import { useRoute } from 'vue-router'
 import { ref, onMounted, watch, computed } from 'vue'
 import { useRuntimeConfig } from '#app'
 import confetti from 'canvas-confetti'
-import { useAccount, useSignMessage } from '@wagmi/vue'
+import { useAccount, useSignMessage, useWaitForTransactionReceipt } from '@wagmi/vue'
 import YCanvas from '~/components/YCanvas.vue'
 import WalletConnect from '~/components/WalletConnect.vue'
 import { useDrawingGame } from '~/composables/useDrawingGame'
@@ -11,6 +11,8 @@ import { useSIWE } from '~/composables/useSIWE'
 import { useGameContract } from '~/composables/useGameContract'
 import { getAllDifficulties, type DifficultyLevel } from '~/utils/wordDictionary'
 import type { Address } from 'viem'
+import { createPublicClient, http } from 'viem'
+import { passetHub } from '~/utils/chains'
 
 const config = useRuntimeConfig()
 const route = useRoute()
@@ -572,13 +574,32 @@ async function handleCommitWordOnChain(word: string) {
     // Generate salt and store it
     wordSalt.value = generateSalt()
     
+    console.log('[Contract] Committing word with salt:', wordSalt.value)
     const txHash = await commitWordOnChain(onChainGameId.value, word, wordSalt.value)
-    console.log('[Contract] Word committed, tx:', txHash)
-    console.log('[Contract] Salt:', wordSalt.value)
+    console.log('[Contract] Word commitment tx sent:', txHash)
+    
+    // Wait for transaction to be confirmed on-chain
+    console.log('[Contract] Waiting for transaction confirmation...')
+    const publicClient = createPublicClient({
+      chain: passetHub,
+      transport: http()
+    })
+    
+    const receipt = await publicClient.waitForTransactionReceipt({ 
+      hash: txHash,
+      confirmations: 1
+    })
+    
+    if (receipt.status === 'success') {
+      console.log('[Contract] Word committed successfully! Block:', receipt.blockNumber)
+    } else {
+      throw new Error('Transaction reverted')
+    }
     
   } catch (error: any) {
     console.error('[Contract] Failed to commit word:', error)
     contractError.value = error.message || 'Failed to commit word'
+    wordSalt.value = '' // Clear salt on failure
   } finally {
     isCommittingWord.value = false
   }
