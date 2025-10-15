@@ -1253,62 +1253,6 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
               </div>
             </div>
 
-            <!-- Smart Contract Integration (Host Only) -->
-            <div v-if="isHost" class="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3">
-              <div class="flex items-start gap-2 mb-2">
-                <span class="text-lg">⛓️</span>
-                <div class="flex-1">
-                  <h3 class="text-sm font-semibold text-purple-900 dark:text-purple-100">Optional: Create game and record results onchain</h3>
-                  <p class="text-xs text-purple-700 dark:text-purple-300 mt-0.5">
-                    Contract: {{ contractAddress.slice(0, 6) }}...{{ contractAddress.slice(-4) }}
-                  </p>
-                  <p v-if="playerWins !== undefined" class="text-xs text-purple-700 dark:text-purple-300 mt-1">
-                    Your total wins: {{ playerWins }}
-                  </p>
-                </div>
-              </div>
-              
-              <div class="space-y-2">
-                
-                
-                <!-- Join Game (Players) -->
-                <UButton
-                  v-if="!isHost && isConnected && onChainGameId"
-                  @click="handleJoinGameOnChain"
-                  :loading="isJoiningGame"
-                  color="purple"
-                  size="sm"
-                  block
-                >
-                  Join Game On-Chain
-                </UButton>
-                
-                <!-- Status Messages -->
-                <div v-if="onChainGameId" class="text-xs text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded px-2 py-1.5">
-                  ✓ On-chain Game ID: {{ onChainGameId }}
-                </div>
-                
-                <div v-if="wordSalt" class="text-xs text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded px-2 py-1.5">
-                  ✓ Word committed on-chain
-                </div>
-                
-                <div v-if="isCommittingWord" class="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded px-2 py-1.5">
-                  ⏳ Committing word to blockchain...
-                </div>
-                
-                <div v-if="isRevealingScore" class="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded px-2 py-1.5">
-                  ⏳ Submitting results to blockchain...
-                </div>
-                
-                <p v-if="contractError" class="text-xs text-red-600 dark:text-red-400">
-                  {{ contractError }}
-                </p>
-                
-                <p v-if="!isConnected" class="text-xs text-gray-600 dark:text-gray-400">
-                  Connect wallet to use blockchain features
-                </p>
-              </div>
-            </div>
 
             <!-- Start Button -->
             <div class="pt-4">
