@@ -10,6 +10,7 @@ export default defineNuxtConfig({
       signalingServer: process.env.NUXT_PUBLIC_SIGNALING_SERVER || 'ws://localhost:4444',
       turnUsername: process.env.NUXT_PUBLIC_TURN_USERNAME || '',
       turnCredential: process.env.NUXT_PUBLIC_TURN_CREDENTIAL || '',
+      contractAddress: process.env.NUXT_PUBLIC_CONTRACT_ADDRESS || '0x0CdDBa8De3211cDB5f3b039F0e4B892fc189E6E1',
     }
   }
 })

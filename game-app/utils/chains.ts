@@ -11,10 +11,16 @@ export const passetHub = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ['https://testnet-passet-hub-eth-rpc.polkadot.io'],
+      http: [
+        'https://testnet-passet-hub-eth-rpc.polkadot.io',
+        // Add fallback RPCs here if available
+      ],
     },
     public: {
-      http: ['https://testnet-passet-hub-eth-rpc.polkadot.io'],
+      http: [
+        'https://testnet-passet-hub-eth-rpc.polkadot.io',
+        // Add fallback RPCs here if available
+      ],
     },
   },
   blockExplorers: {

@@ -19,13 +19,13 @@ interface TransactionLog {
 
 const transactionHistory = ref<TransactionLog[]>([])
 
-// Contract address on PAsset Hub testnet
-const CONTRACT_ADDRESS = '0xd8Ceb2B3dCdC96F903a4A8927C8ed6B6265293d6' as const
-
-// Extract ABI from the JSON
-const ABI = contractABI.abi
-
 export function useGameContract() {
+  const config = useRuntimeConfig()
+  const CONTRACT_ADDRESS = config.public.contractAddress as `0x${string}`
+ 
+    // Extract ABI from the JSON
+  const ABI = contractABI.abi
+
   const { writeContractAsync, data: hash, isPending } = useWriteContract()
   const { address } = useAccount()
   
