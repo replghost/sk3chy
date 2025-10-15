@@ -1017,7 +1017,7 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
           </h2>
           
           <!-- Active Players -->
-          <div class="grid grid-cols-2 gap-2 mb-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
             <div 
               v-for="peer in activePlayers" 
               :key="peer.id"
@@ -1077,7 +1077,7 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
               <span>Spectators</span>
               <span class="text-xs font-normal">{{ spectators.length }}</span>
             </h3>
-            <div class="grid grid-cols-2 gap-2 mb-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
               <div 
                 v-for="peer in spectators" 
                 :key="peer.id"
