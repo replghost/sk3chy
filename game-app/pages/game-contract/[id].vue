@@ -607,17 +607,34 @@ async function handleCommitWordOnChain(word: string) {
 
 // Reveal and score on-chain (called by host when game ends)
 async function handleRevealAndScoreOnChain() {
-  if (!isConnected.value || !isHost.value) return
+  if (!isConnected.value || !isHost.value) {
+    console.error('[Contract] Not connected or not host')
+    return
+  }
   
   if (!onChainGameId.value) {
     contractError.value = 'No on-chain game ID available'
+    console.error('[Contract] No game ID')
     return
   }
   
   if (!wordSalt.value) {
     contractError.value = 'Word salt not found - did you commit the word?'
+    console.error('[Contract] No salt found!')
     return
   }
+  
+  if (!gameState.value.selectedWord) {
+    contractError.value = 'No word selected'
+    console.error('[Contract] No word selected!')
+    return
+  }
+  
+  console.log('[Contract] === REVEAL DEBUG ===')
+  console.log('[Contract] Game ID:', onChainGameId.value)
+  console.log('[Contract] Word:', gameState.value.selectedWord)
+  console.log('[Contract] Salt:', wordSalt.value)
+  console.log('[Contract] Host address:', address.value)
   
   try {
     isRevealingScore.value = true
