@@ -1,8 +1,23 @@
 import { useWriteContract, useWaitForTransactionReceipt, useReadContract, useAccount, useClient } from '@wagmi/vue'
-import { keccak256, encodePacked, type Address, parseAbiItem, createPublicClient, http } from 'viem'
-import { computed } from 'vue'
+import { keccak256, encodePacked, type Address, parseAbiItem, createPublicClient, http, type TransactionReceipt } from 'viem'
+import { computed, ref } from 'vue'
 import contractABI from '~/utils/abi/Sk3chyGame.json'
 import { passetHub } from '~/utils/chains'
+
+// Transaction history storage
+interface TransactionLog {
+  hash: `0x${string}`
+  type: 'createGame' | 'joinGame' | 'commitWord' | 'revealAndScore'
+  timestamp: number
+  status: 'pending' | 'success' | 'failed'
+  error?: string
+  blockNumber?: bigint
+  gasUsed?: bigint
+  explorerUrl: string
+  details?: any
+}
+
+const transactionHistory = ref<TransactionLog[]>([])
 
 // Contract address on PAsset Hub testnet
 const CONTRACT_ADDRESS = '0xd8Ceb2B3dCdC96F903a4A8927C8ed6B6265293d6' as const
@@ -14,19 +29,168 @@ export function useGameContract() {
   const { writeContractAsync, data: hash, isPending } = useWriteContract()
   const { address } = useAccount()
   
+  // Helper to log transactions
+  function logTransaction(log: TransactionLog) {
+    transactionHistory.value.unshift(log)
+    // Keep only last 50 transactions
+    if (transactionHistory.value.length > 50) {
+      transactionHistory.value = transactionHistory.value.slice(0, 50)
+    }
+    console.log('[Contract] Transaction logged:', log)
+  }
+  
+  // Helper to get explorer URL
+  function getExplorerUrl(hash: `0x${string}`) {
+    return `https://blockscout-passet-hub.parity-testnet.parity.io/tx/${hash}`
+  }
+  
+  // Helper to decode revert reason from transaction
+  async function getRevertReason(hash: `0x${string}`) {
+    try {
+      const publicClient = createPublicClient({
+        chain: passetHub,
+        transport: http()
+      })
+      
+      const tx = await publicClient.getTransaction({ hash })
+      if (!tx) return 'Transaction not found'
+      
+      try {
+        // Try to simulate the transaction to get revert reason
+        await publicClient.call({
+          to: tx.to,
+          data: tx.input,
+          value: tx.value,
+        })
+      } catch (err: any) {
+        // Extract revert reason from error
+        if (err.message) {
+          // Look for common revert patterns
+          const match = err.message.match(/reverted with reason string '(.+?)'/) ||
+                       err.message.match(/execution reverted: (.+)/) ||
+                       err.message.match(/Error: (.+)/)
+          if (match) return match[1]
+        }
+        return err.message || 'Unknown revert reason'
+      }
+    } catch (error: any) {
+      console.error('[Contract] Failed to get revert reason:', error)
+      return 'Could not decode revert reason'
+    }
+  }
+  
+  // Helper to wait for transaction and update log
+  async function waitAndLogTransaction(hash: `0x${string}`, type: TransactionLog['type'], details?: any) {
+    const publicClient = createPublicClient({
+      chain: passetHub,
+      transport: http()
+    })
+    
+    try {
+      console.log(`[Contract] Waiting for ${type} transaction:`, hash)
+      console.log(`[Contract] Explorer: ${getExplorerUrl(hash)}`)
+      
+      const receipt = await publicClient.waitForTransactionReceipt({ 
+        hash,
+        confirmations: 1,
+        timeout: 60_000 // 60 second timeout
+      })
+      
+      const success = receipt.status === 'success'
+      
+      // If transaction failed, try to get revert reason
+      let errorMessage: string | undefined
+      if (!success) {
+        console.error('[Contract] Transaction reverted! Getting revert reason...')
+        errorMessage = await getRevertReason(hash)
+        console.error('[Contract] Revert reason:', errorMessage)
+      }
+      
+      const log: TransactionLog = {
+        hash,
+        type,
+        timestamp: Date.now(),
+        status: success ? 'success' : 'failed',
+        blockNumber: receipt.blockNumber,
+        gasUsed: receipt.gasUsed,
+        explorerUrl: getExplorerUrl(hash),
+        error: errorMessage,
+        details
+      }
+      
+      logTransaction(log)
+      
+      console.log(`[Contract] Transaction ${success ? 'succeeded' : 'failed'}:`, {
+        hash,
+        blockNumber: receipt.blockNumber,
+        gasUsed: receipt.gasUsed.toString(),
+        logs: receipt.logs.length,
+        status: receipt.status
+      })
+      
+      // Log decoded events
+      if (receipt.logs.length > 0) {
+        console.log('[Contract] Transaction logs:', receipt.logs)
+      }
+      
+      // Throw error if transaction failed
+      if (!success) {
+        throw new Error(`Transaction reverted: ${errorMessage || 'Unknown reason'}`)
+      }
+      
+      return receipt
+    } catch (error: any) {
+      console.error(`[Contract] Transaction failed or timed out:`, error)
+      const log: TransactionLog = {
+        hash,
+        type,
+        timestamp: Date.now(),
+        status: 'failed',
+        error: error.message || 'Transaction failed',
+        explorerUrl: getExplorerUrl(hash),
+        details
+      }
+      logTransaction(log)
+      throw error
+    }
+  }
+  
   // Create a new game
   async function createGame() {
     try {
+      console.log('[Contract] Creating game...')
+      console.log('[Contract] Contract address:', CONTRACT_ADDRESS)
+      console.log('[Contract] Chain:', passetHub.name)
+      
       const hash = await writeContractAsync({
         address: CONTRACT_ADDRESS,
         abi: ABI,
         functionName: 'createGame',
       })
       
-      console.log('[Contract] Game creation tx:', hash)
+      console.log('[Contract] Game creation tx submitted:', hash)
+      console.log('[Contract] View on explorer:', getExplorerUrl(hash))
+      
+      // Log as pending immediately
+      logTransaction({
+        hash,
+        type: 'createGame',
+        timestamp: Date.now(),
+        status: 'pending',
+        explorerUrl: getExplorerUrl(hash)
+      })
+      
+      // Wait for confirmation in background
+      waitAndLogTransaction(hash, 'createGame').catch(console.error)
+      
       return hash
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Contract] Failed to create game:', error)
+      console.error('[Contract] Error details:', {
+        message: error.message,
+        code: error.code,
+        data: error.data
+      })
       throw error
     }
   }
@@ -34,6 +198,8 @@ export function useGameContract() {
   // Join an existing game
   async function joinGame(gameId: number) {
     try {
+      console.log('[Contract] Joining game:', gameId)
+      
       const hash = await writeContractAsync({
         address: CONTRACT_ADDRESS,
         abi: ABI,
@@ -41,19 +207,96 @@ export function useGameContract() {
         args: [BigInt(gameId)],
       })
       
-      console.log('[Contract] Join game tx:', hash)
+      console.log('[Contract] Join game tx submitted:', hash)
+      console.log('[Contract] View on explorer:', getExplorerUrl(hash))
+      
+      logTransaction({
+        hash,
+        type: 'joinGame',
+        timestamp: Date.now(),
+        status: 'pending',
+        explorerUrl: getExplorerUrl(hash),
+        details: { gameId }
+      })
+      
+      waitAndLogTransaction(hash, 'joinGame', { gameId }).catch(console.error)
+      
       return hash
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Contract] Failed to join game:', error)
+      console.error('[Contract] Error details:', {
+        message: error.message,
+        code: error.code,
+        gameId
+      })
       throw error
+    }
+  }
+  
+  // Check game state before committing
+  async function checkGameState(gameId: number) {
+    try {
+      const publicClient = createPublicClient({
+        chain: passetHub,
+        transport: http()
+      })
+      
+      const gameData = await publicClient.readContract({
+        address: CONTRACT_ADDRESS,
+        abi: ABI,
+        functionName: 'getGame',
+        args: [BigInt(gameId)]
+      }) as any
+      
+      console.log('[Contract] Game state:', {
+        gameId,
+        host: gameData[0],
+        wordCommitment: gameData[1],
+        createdAt: gameData[2]?.toString(),
+        isActive: gameData[3]
+      })
+      
+      return gameData
+    } catch (error) {
+      console.error('[Contract] Failed to check game state:', error)
+      return null
     }
   }
   
   // Commit word hash (host only)
   async function commitWord(gameId: number, word: string, salt: string) {
     try {
+      console.log('[Contract] Committing word for game:', gameId)
+      console.log('[Contract] Current address:', address.value)
+      
+      // Check game state first
+      const gameState = await checkGameState(gameId)
+      if (gameState) {
+        const [host, existingCommitment, createdAt, isActive] = gameState
+        console.log('[Contract] Game host:', host)
+        console.log('[Contract] Your address:', address.value)
+        console.log('[Contract] Is host?', host.toLowerCase() === address.value?.toLowerCase())
+        console.log('[Contract] Existing commitment:', existingCommitment)
+        console.log('[Contract] Is active?', isActive)
+        
+        if (existingCommitment !== '0x0000000000000000000000000000000000000000000000000000000000000000') {
+          console.warn('[Contract] ⚠️ Word already committed for this game!')
+        }
+        
+        if (!isActive) {
+          throw new Error('Game is not active')
+        }
+        
+        if (host.toLowerCase() !== address.value?.toLowerCase()) {
+          throw new Error('You are not the host of this game')
+        }
+      }
+      
       // Create commitment hash
       const commitment = keccak256(encodePacked(['string', 'string'], [word, salt]))
+      console.log('[Contract] Commitment hash:', commitment)
+      console.log('[Contract] Word:', word, 'Length:', word.length)
+      console.log('[Contract] Salt:', salt, 'Length:', salt.length)
       
       const hash = await writeContractAsync({
         address: CONTRACT_ADDRESS,
@@ -62,11 +305,28 @@ export function useGameContract() {
         args: [BigInt(gameId), commitment],
       })
       
-      console.log('[Contract] Commit word tx:', hash)
-      console.log('[Contract] Commitment:', commitment)
+      console.log('[Contract] Commit word tx submitted:', hash)
+      console.log('[Contract] View on explorer:', getExplorerUrl(hash))
+      
+      logTransaction({
+        hash,
+        type: 'commitWord',
+        timestamp: Date.now(),
+        status: 'pending',
+        explorerUrl: getExplorerUrl(hash),
+        details: { gameId, commitment }
+      })
+      
+      waitAndLogTransaction(hash, 'commitWord', { gameId, commitment }).catch(console.error)
+      
       return hash
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Contract] Failed to commit word:', error)
+      console.error('[Contract] Error details:', {
+        message: error.message,
+        code: error.code,
+        gameId
+      })
       throw error
     }
   }
@@ -80,6 +340,16 @@ export function useGameContract() {
     scores: number[]
   ) {
     try {
+      console.log('[Contract] Revealing and scoring game:', gameId)
+      console.log('[Contract] Word:', word)
+      console.log('[Contract] Salt:', salt)
+      console.log('[Contract] Winners:', winners)
+      console.log('[Contract] Scores:', scores)
+      
+      // Verify commitment matches
+      const commitment = keccak256(encodePacked(['string', 'string'], [word, salt]))
+      console.log('[Contract] Recomputed commitment:', commitment)
+      
       const hash = await writeContractAsync({
         address: CONTRACT_ADDRESS,
         abi: ABI,
@@ -93,10 +363,31 @@ export function useGameContract() {
         ],
       })
       
-      console.log('[Contract] Reveal and score tx:', hash)
+      console.log('[Contract] Reveal and score tx submitted:', hash)
+      console.log('[Contract] View on explorer:', getExplorerUrl(hash))
+      
+      logTransaction({
+        hash,
+        type: 'revealAndScore',
+        timestamp: Date.now(),
+        status: 'pending',
+        explorerUrl: getExplorerUrl(hash),
+        details: { gameId, word, winners: winners.length, totalScore: scores.reduce((a, b) => a + b, 0) }
+      })
+      
+      waitAndLogTransaction(hash, 'revealAndScore', { gameId, word, winners, scores }).catch(console.error)
+      
       return hash
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Contract] Failed to reveal and score:', error)
+      console.error('[Contract] Error details:', {
+        message: error.message,
+        code: error.code,
+        data: error.data,
+        gameId,
+        word,
+        winnersCount: winners.length
+      })
       throw error
     }
   }
@@ -264,6 +555,11 @@ export function useGameContract() {
     }
   }
 
+  // Clear transaction history
+  function clearTransactionHistory() {
+    transactionHistory.value = []
+  }
+  
   return {
     // Contract info
     contractAddress: CONTRACT_ADDRESS,
@@ -283,8 +579,13 @@ export function useGameContract() {
     getGamesByHost,
     getLeaderboard,
     
-    // Debug
+    // Debug & Logging
     getTransactionReceipt,
+    transactionHistory: computed(() => transactionHistory.value),
+    clearTransactionHistory,
+    getExplorerUrl,
+    getRevertReason,
+    checkGameState,
     
     // State
     isPending,

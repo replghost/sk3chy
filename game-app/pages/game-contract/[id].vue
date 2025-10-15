@@ -43,6 +43,9 @@ const {
   usePlayerWins,
   contractAddress,
   isPending: isContractPending,
+  transactionHistory,
+  clearTransactionHistory,
+  getExplorerUrl,
 } = useGameContract()
 
 // Contract state
@@ -1206,6 +1209,14 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Transaction History (if any transactions exist) -->
+      <div v-if="transactionHistory.length > 0" class="mt-6">
+        <TransactionHistory 
+          :transactions="transactionHistory" 
+          @clear="clearTransactionHistory"
+        />
       </div>
     </div>
   </div>
