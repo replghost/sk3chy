@@ -126,10 +126,15 @@ export function useGameContract() {
   // Query past games from events
   async function getRecentGames(limit = 20) {
     try {
+      console.log('[Contract] Fetching recent games from contract:', CONTRACT_ADDRESS)
+      console.log('[Contract] Chain:', passetHub)
+      
       const publicClient = createPublicClient({
         chain: passetHub,
         transport: http()
       })
+      
+      console.log('[Contract] Public client created, fetching logs...')
       
       const logs = await publicClient.getLogs({
         address: CONTRACT_ADDRESS,
@@ -137,6 +142,9 @@ export function useGameContract() {
         fromBlock: 0n,
         toBlock: 'latest'
       })
+      
+      console.log('[Contract] Found', logs.length, 'GameCompleted events')
+      console.log('[Contract] Raw logs:', logs)
       
       const games = logs.map(log => ({
         gameId: Number(log.args.gameId),
@@ -149,10 +157,13 @@ export function useGameContract() {
         transactionHash: log.transactionHash
       }))
       
+      console.log('[Contract] Parsed games:', games)
+      
       // Return most recent games
       return games.slice(-limit).reverse()
     } catch (error) {
       console.error('[Contract] Failed to fetch recent games:', error)
+      console.error('[Contract] Error details:', JSON.stringify(error, null, 2))
       return []
     }
   }
@@ -235,6 +246,24 @@ export function useGameContract() {
     }
   }
   
+  // Debug: Get transaction receipt
+  async function getTransactionReceipt(txHash: `0x${string}`) {
+    try {
+      const publicClient = createPublicClient({
+        chain: passetHub,
+        transport: http()
+      })
+      
+      const receipt = await publicClient.getTransactionReceipt({ hash: txHash })
+      console.log('[Contract] Transaction receipt:', receipt)
+      console.log('[Contract] Logs:', receipt.logs)
+      return receipt
+    } catch (error) {
+      console.error('[Contract] Failed to get transaction receipt:', error)
+      return null
+    }
+  }
+
   return {
     // Contract info
     contractAddress: CONTRACT_ADDRESS,
@@ -253,6 +282,9 @@ export function useGameContract() {
     getRecentGames,
     getGamesByHost,
     getLeaderboard,
+    
+    // Debug
+    getTransactionReceipt,
     
     // State
     isPending,

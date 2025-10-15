@@ -607,25 +607,19 @@ async function handleRevealAndScoreOnChain() {
     const winners: Address[] = []
     const scores: number[] = []
     
-    // If there's a winner, add them (only if they're an active player)
-    if (gameState.value.winnerId) {
-      const winnerPeer = activePlayers.value.find(p => p.id === gameState.value.winnerId)
-      if (winnerPeer?.address) {
-        winners.push(winnerPeer.address as Address)
-        scores.push(100) // Winner gets 100 points
-      }
-    }
-    
-    // Add other active players with their guess counts as scores
-    activePlayers.value.forEach(peer => {
-      if (peer.id !== gameState.value.winnerId && peer.address) {
-        const peerGuesses = guesses.value.filter(g => g.by === peer.id).length
-        if (peerGuesses > 0) {
-          winners.push(peer.address as Address)
+    guesses.value.forEach(guess => {
+      if (guess.text.toLowerCase() === gameState.value.selectedWord?.toLowerCase()) {
+        const peer = peers.value.find(p => p.id === guess.by)
+        if (peer?.walletAddress) {
+          const peerGuesses = guesses.value.filter(g => g.by === guess.by).length
+          winners.push(peer.walletAddress as Address)
           scores.push(peerGuesses * 10) // 10 points per guess
         }
       }
     })
+    
+    console.log('[Contract] Winners:', winners)
+    console.log('[Contract] Scores:', scores)
     
     const txHash = await revealAndScoreOnChain(
       onChainGameId.value,
