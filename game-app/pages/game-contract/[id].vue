@@ -865,7 +865,7 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
     <div class="max-w-6xl w-full">
       <!-- Header -->
       <div class="text-center mb-8">
-        <h1 class="text-4xl font-bold mb-2">🎨 sk3tchy Contract Game</h1>
+        <h1 class="text-4xl font-bold mb-2">{{ isHost ? 'sk3chy Game Lobby: You are the host' : 'sk3chy Game Lobby' }}</h1>
         <p class="text-gray-600 dark:text-gray-400">Room: {{ roomId }}</p>
       </div>
 
