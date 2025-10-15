@@ -1,4 +1,4 @@
-# sk3tchy
+# sk3chy
 
 A peer-to-peer multiplayer drawing game with WebRTC for real-time gameplay and blockchain integration. Players compete to guess what the host is drawing, with cryptographic commitments ensuring fair play. Features BIP-39 word lists and optional on-chain game recording.
 
