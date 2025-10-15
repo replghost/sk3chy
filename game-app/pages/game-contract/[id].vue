@@ -977,8 +977,8 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
               </div>
             </div>
             
-            <!-- Smart Contract Integration -->
-            <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3">
+            <!-- Smart Contract Integration (Host Only) -->
+            <div v-if="isHost" class="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3">
               <div class="flex items-start gap-2 mb-2">
                 <span class="text-lg">⛓️</span>
                 <div class="flex-1">
