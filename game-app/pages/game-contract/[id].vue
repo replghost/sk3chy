@@ -1291,13 +1291,6 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
     <!-- Compact header -->
     <div class="flex items-center justify-between gap-4">
       <div class="flex items-center gap-3 flex-1 min-w-0">
-        <UInput 
-          v-model="displayName" 
-          placeholder="Your name"
-          size="xs"
-          class="w-32"
-          @update:model-value="setDisplayName"
-        />
         <UBadge 
           :color="isHost ? 'green' : 'gray'" 
           variant="soft"
@@ -1534,8 +1527,8 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
             </div>
             
             <!-- Show blockchain status -->
-            <div v-if="isConnected && onChainGameId && gameState.wordCommitment" class="text-xs text-gray-500">
-              {{ wordSalt ? '✓ Word committed on-chain' : 'Will commit word to blockchain when you start' }}
+            <div v-if="isConnected && onChainGameId && wordSalt" class="text-xs text-green-600 dark:text-green-400">
+              ✓ Word committed on-chain
             </div>
           </div>
         </div>
@@ -1574,7 +1567,7 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
       </div>
 
       <!-- Guesses overlay -->
-      <div v-if="ready && (gameState.status === 'playing' || gameState.status === 'finished')" class="absolute bottom-16 right-4 w-64 pointer-events-none select-none z-10">
+      <div v-if="ready && (gameState.status === 'playing' || gameState.status === 'finished')" class="absolute bottom-16 md:bottom-16 left-2 md:left-auto md:right-4 right-2 md:w-64 pointer-events-none select-none z-10">
         <!-- Guesses list with fade at top -->
         <div class="relative max-h-[250px]">
           <div 
@@ -1599,8 +1592,8 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
         </div>
       </div>
 
-      <!-- Color picker overlay (bottom center, only for host during playing) -->
-      <div v-if="ready && isHost && gameState.status === 'playing'" class="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none z-10">
+      <!-- Color picker overlay (desktop only - overlaid on canvas) -->
+      <div v-if="ready && isHost && gameState.status === 'playing'" class="hidden md:block absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none z-10">
         <div class="flex gap-1 bg-black/40 backdrop-blur-sm rounded-full p-2">
           <button
             v-for="color in drawingColors"
@@ -1613,8 +1606,8 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
         </div>
       </div>
 
-      <!-- Input area (separate, only for viewers during playing) -->
-      <div v-if="ready && !isHost && gameState.status === 'playing'" class="absolute bottom-4 right-4 w-64 p-2 pointer-events-auto z-10 bg-black/30 backdrop-blur-sm rounded-lg">
+      <!-- Input area (desktop only - overlaid on canvas) -->
+ <div v-if="ready && !isHost && gameState.status === 'playing'" class="hidden md:block absolute bottom-4 right-4 w-64 p-2 pointer-events-auto z-10 bg-black/30 backdrop-blur-sm rounded-lg">
         <!-- Spectator Warning -->
         <div v-if="!canJoin" class="mb-2 text-xs text-yellow-300 bg-yellow-900/30 px-2 py-1 rounded flex items-center gap-1">
           <span>👁️</span>
@@ -1644,6 +1637,47 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
             →
           </UButton>
         </div>
+      </div>
+    </div>
+    <!-- Color picker for mobile (below canvas, not overlaid) -->
+    <div v-if="ready && isHost && gameState.status === 'playing'" class="md:hidden flex justify-center py-3">
+      <div class="flex gap-1 bg-black/40 backdrop-blur-sm rounded-full p-2">
+        <button
+          v-for="color in drawingColors"
+          :key="color"
+          @click="brushColor = color"
+          class="w-8 h-8 rounded-full border-2 transition-all"
+          :class="brushColor === color ? 'border-white scale-110' : 'border-gray-600/50 hover:scale-105'"
+          :style="{ backgroundColor: color }"
+        />
+      </div>
+    </div>
+    
+    <!-- Guess input for mobile (below canvas, not overlaid) -->
+    <div v-if="ready && !isHost && gameState.status === 'playing'" class="md:hidden px-4 py-3">
+      <!-- Spectator Warning -->
+      <div v-if="!canJoin" class="mb-2 text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30 px-3 py-2 rounded-lg flex items-center gap-2">
+        <span>👁️</span>
+        <span>Spectating only - room is full</span>
+      </div>
+      
+      <div class="flex gap-2">
+        <UInput 
+          v-model="guessInput"
+          :placeholder="canJoin ? 'Type your guess...' : 'Spectating...'"
+          :disabled="!canJoin"
+          size="md"
+          class="flex-1"
+          @keydown.enter.prevent="handleSendGuess"
+        />
+        <UButton 
+          @click="handleSendGuess"
+          :disabled="!canJoin"
+          size="md"
+          color="primary"
+        >
+          Send
+        </UButton>
       </div>
     </div>
   </section>
