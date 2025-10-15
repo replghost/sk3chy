@@ -1492,7 +1492,7 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
             class="flex-1 transition-opacity"
             :class="{ 'opacity-50 cursor-not-allowed': !canJoin }"
             :ui="{ base: 'bg-white/10 border-white/20 text-white placeholder-white/40' }"
-            @keyup.enter="handleSendGuess"
+            @keydown.enter.prevent="handleSendGuess"
           />
           <UButton 
             @click="handleSendGuess"
