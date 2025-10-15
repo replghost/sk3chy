@@ -453,7 +453,7 @@ export function useDrawingGame(roomId: string) {
 
   function setWalletAddress(address: string | null) {
     if (!yroom) return
-    yroom.awareness.setLocalStateField('address', address)
+    yroom.awareness.setLocalStateField('walletAddress', address)
   }
 
   function sendGuess(text: string) {

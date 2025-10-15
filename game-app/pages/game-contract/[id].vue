@@ -798,6 +798,7 @@ async function handleRevealAndScoreOnChain() {
     // Only include active players (first maxPlayers), exclude spectators
     const winners: Address[] = []
     const scores: number[] = []
+    const winnersWithoutWallet: string[] = []
     
     guesses.value.forEach(guess => {
       if (guess.text.toLowerCase() === gameState.value.selectedWord?.toLowerCase()) {
@@ -806,12 +807,20 @@ async function handleRevealAndScoreOnChain() {
           const peerGuesses = guesses.value.filter(g => g.by === guess.by).length
           winners.push(peer.walletAddress as Address)
           scores.push(peerGuesses * 10) // 10 points per guess
+        } else if (peer) {
+          // Track winners without wallets
+          winnersWithoutWallet.push(peer.displayName || 'Anonymous')
         }
       }
     })
     
     console.log('[Contract] Winners:', winners)
     console.log('[Contract] Scores:', scores)
+    
+    if (winnersWithoutWallet.length > 0) {
+      console.warn('[Contract] Winners without wallet (not recorded on-chain):', winnersWithoutWallet)
+      contractError.value = `⚠️ ${winnersWithoutWallet.join(', ')} won but didn't connect wallet - not recorded on-chain`
+    }
     
     // This now waits for confirmation internally before returning
     const txHash = await revealAndScoreOnChain(
