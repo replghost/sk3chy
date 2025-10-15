@@ -30,14 +30,13 @@ onMounted(async () => {
   ]
   
   // Add TURN server if credentials are configured
+  // Use only 2 TURN URLs to avoid "5+ servers" warning
   if (config.public.turnUsername && config.public.turnCredential) {
     console.log('[SIWE Test] TURN server configured')
     iceServers.push({
       urls: [
-        'turn:a.relay.metered.ca:80?transport=tcp',
-        'turn:a.relay.metered.ca:80',
         'turn:a.relay.metered.ca:443',
-        'turns:a.relay.metered.ca:443?transport=tcp'
+        'turn:a.relay.metered.ca:443?transport=tcp'
       ],
       username: config.public.turnUsername,
       credential: config.public.turnCredential
