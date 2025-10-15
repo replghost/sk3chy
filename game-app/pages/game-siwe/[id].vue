@@ -990,7 +990,7 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
     <div v-if="isHost && gameState.status === 'selecting'" class="flex items-center justify-center p-6 min-h-[80vh]">
       <div class="max-w-4xl w-full">
         <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
-          <h2 class="text-3xl font-bold mb-2 text-center">Choose Your Word</h2>
+          <h2 class="text-3xl font-bold mb-2 text-center">Choose Your BIP-39 Word</h2>
           <p class="text-gray-600 dark:text-gray-400 text-center mb-8">
             Select a word to draw for the other players
           </p>
