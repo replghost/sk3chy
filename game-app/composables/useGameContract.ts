@@ -426,7 +426,8 @@ export function useGameContract() {
         details: { gameId, word, winners: winners.length, totalScore: scores.reduce((a, b) => a + b, 0) }
       })
       
-      waitAndLogTransaction(hash, 'revealAndScore', { gameId, word, winners, scores }).catch(console.error)
+      // Wait for transaction confirmation before returning
+      await waitAndLogTransaction(hash, 'revealAndScore', { gameId, word, winners, scores })
       
       return hash
     } catch (error: any) {

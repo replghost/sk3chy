@@ -10,6 +10,7 @@ import { useDrawingGame } from '~/composables/useDrawingGame'
 import { useSIWE } from '~/composables/useSIWE'
 import { useGameContract } from '~/composables/useGameContract'
 import { getAllDifficulties, type DifficultyLevel } from '~/utils/wordDictionary'
+import contractABI from '~/utils/abi/Sk3chyGame.json'
 import type { Address } from 'viem'
 import { createPublicClient, http } from 'viem'
 import { passetHub } from '~/utils/chains'
@@ -397,13 +398,94 @@ function generatePreview() {
 }
 
 // Generate preview when game finishes
-watch(() => gameState.value.status, (newStatus, oldStatus) => {
+watch(() => gameState.value.status, async (newStatus, oldStatus) => {
   console.log('[Game Page] Status changed:', oldStatus, '->', newStatus, 'showFinishModal:', showFinishModal.value)
   
   if (newStatus === 'finished' && oldStatus !== 'finished') {
-    console.log('[Game Page] Setting showFinishModal to true')
-    // Show modal immediately
+    console.log('[Game Page] Game finished!')
+    console.log('[Game Page] Blockchain check:', {
+      isHost: isHost.value,
+      isConnected: isConnected.value,
+      onChainGameId: onChainGameId.value,
+      wordSalt: wordSalt.value
+    })
+    
+    // If host with blockchain, submit results first before showing modal
+    if (isHost.value && isConnected.value && onChainGameId.value && wordSalt.value) {
+      console.log('[Game Page] ===== STARTING BLOCKCHAIN SUBMISSION =====')
+      console.log('[Game Page] About to call handleRevealAndScoreOnChain...')
+      
+      // Set revealing flag to show loading overlay
+      console.log('[Game Page] Setting isRevealingScore = true')
+      isRevealingScore.value = true
+      console.log('[Game Page] isRevealingScore is now:', isRevealingScore.value)
+      console.log('[Game Page] gameState.status is:', gameState.value.status)
+      
+      try {
+        await handleRevealAndScoreOnChain()
+        console.log('[Game Page] ===== BLOCKCHAIN SUBMISSION COMPLETE =====')
+        console.log('[Game Page] Now showing modal')
+      } catch (error) {
+        console.error('[Game Page] Blockchain submission failed:', error)
+        // Show modal anyway even if blockchain fails
+      } finally {
+        // Clear revealing flag
+        isRevealingScore.value = false
+      }
+    } else {
+      console.log('[Game Page] Skipping blockchain submission')
+      
+      // If connected to blockchain but not host, poll to wait for host to complete the game
+      if (isConnected.value && onChainGameId.value) {
+        console.log('[Game Page] Non-host polling blockchain for game completion...')
+        
+        const publicClient = createPublicClient({
+          chain: passetHub,
+          transport: http()
+        })
+        
+        // Poll every 2 seconds for up to 30 seconds
+        const maxAttempts = 15
+        let attempts = 0
+        let gameCompleted = false
+        
+        while (attempts < maxAttempts && !gameCompleted) {
+          try {
+            const gameData = await publicClient.readContract({
+              address: contractAddress as `0x${string}`,
+              abi: contractABI.abi,
+              functionName: 'getGame',
+              args: [BigInt(onChainGameId.value)]
+            }) as any
+            
+            // Check if game is no longer active (host completed it)
+            if (!gameData[3]) { // isActive is false
+              console.log('[Game Page] Game completed on blockchain!')
+              gameCompleted = true
+              break
+            }
+            
+            console.log(`[Game Page] Waiting for completion... (attempt ${attempts + 1}/${maxAttempts})`)
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            attempts++
+          } catch (error) {
+            console.error('[Game Page] Error polling blockchain:', error)
+            break
+          }
+        }
+        
+        if (!gameCompleted) {
+          console.log('[Game Page] Timeout waiting for blockchain completion, showing modal anyway')
+        }
+      } else {
+        console.log('[Game Page] No blockchain, showing modal immediately')
+      }
+    }
+    
+    console.log('[Game Page] Setting showFinishModal = true')
+    // Show modal after blockchain submission (or immediately if not host/blockchain)
     showFinishModal.value = true
+    console.log('[Game Page] showFinishModal is now:', showFinishModal.value)
     
     // Generate preview in background (non-blocking)
     if ('requestIdleCallback' in window) {
@@ -420,9 +502,9 @@ watch(() => gameState.value.status, (newStatus, oldStatus) => {
   }
 }, { immediate: true })
 
-// Trigger confetti when someone wins
-watch(() => gameState.value.winnerId, (newWinnerId, oldWinnerId) => {
-  if (newWinnerId && !oldWinnerId && gameState.value.status === 'finished') {
+// Trigger confetti when finish modal is shown (after blockchain submission for hosts)
+watch(() => showFinishModal.value, (isShowing, wasShowing) => {
+  if (isShowing && !wasShowing && gameState.value.status === 'finished' && gameState.value.winnerId) {
     // Fire confetti!
     const duration = 3000
     const end = Date.now() + duration
@@ -678,7 +760,6 @@ async function handleRevealAndScoreOnChain() {
   console.log('[Contract] Host address:', address.value)
   
   try {
-    isRevealingScore.value = true
     contractError.value = null
     
     // Get winners and scores from game state
@@ -700,6 +781,7 @@ async function handleRevealAndScoreOnChain() {
     console.log('[Contract] Winners:', winners)
     console.log('[Contract] Scores:', scores)
     
+    // This now waits for confirmation internally before returning
     const txHash = await revealAndScoreOnChain(
       onChainGameId.value,
       gameState.value.selectedWord || '',
@@ -708,14 +790,12 @@ async function handleRevealAndScoreOnChain() {
       scores
     )
     
-    console.log('[Contract] Results submitted, tx:', txHash)
+    console.log('[Contract] Results submitted and confirmed, tx:', txHash)
     
   } catch (error: any) {
     console.error('[Contract] Failed to reveal and score:', error)
     contractError.value = error.message || 'Failed to submit results'
-  } finally {
-    isRevealingScore.value = false
-  }
+  } 
 }
 
 // Auto-commit word when host selects it
@@ -730,16 +810,6 @@ watch(() => gameState.value.selectedWord, (newWord) => {
   if (newWord && isHost.value && isConnected.value && onChainGameId.value && !wordSalt.value) {
     console.log('[Contract] Auto-committing word on selection')
     handleCommitWordOnChain(newWord)
-  }
-})
-
-// Auto-submit results when game finishes
-watch(() => gameState.value.status, (newStatus, oldStatus) => {
-  if (newStatus === 'finished' && oldStatus === 'playing' && isHost.value && isConnected.value && onChainGameId.value && wordSalt.value) {
-    // Wait a bit for final state to settle
-    setTimeout(() => {
-      handleRevealAndScoreOnChain()
-    }, 2000)
   }
 })
 
@@ -1611,6 +1681,18 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
       </div>
     </div>
   </section>
+
+  <!-- Blockchain Submission Loading Overlay -->
+  <div v-if="isRevealingScore && gameState.status === 'finished'" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center" style="z-index: 100000;">
+    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl p-8 text-center max-w-md">
+      <div class="text-4xl mb-4">⏳</div>
+      <h3 class="text-xl font-bold mb-2">Submitting Results to Blockchain</h3>
+      <p class="text-gray-600 dark:text-gray-400 mb-4">Please wait while we commit the game results on-chain...</p>
+      <div class="flex justify-center">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    </div>
+  </div>
 
   <!-- Game Finished Modal (outside section so it's always available) -->
   <div v-if="showFinishModal && gameState.status === 'finished'" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 md:p-4" style="z-index: 99999;" @click.self="() => { resetGame(); clearContractState(); selectedWordLocal = null; showFinishModal = false }">
