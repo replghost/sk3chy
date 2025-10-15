@@ -948,7 +948,7 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
                 <span class="text-lg">🔐</span>
                 <div class="flex-1">
                   <h3 class="text-sm font-semibold text-blue-900 dark:text-blue-100">Optional: Sign In with Ethereum</h3>
-                  <p class="text-xs text-blue-700 dark:text-blue-300 mt-0.5">Verify your identity on-chain (optional)</p>
+                  <p class="text-xs text-blue-700 dark:text-blue-300 mt-0.5">Verify your identity with a signature (optional)</p>
                 </div>
               </div>
               
@@ -982,7 +982,7 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
               <div class="flex items-start gap-2 mb-2">
                 <span class="text-lg">⛓️</span>
                 <div class="flex-1">
-                  <h3 class="text-sm font-semibold text-purple-900 dark:text-purple-100">Blockchain Integration</h3>
+                  <h3 class="text-sm font-semibold text-purple-900 dark:text-purple-100">Optional: Create game and record results onchain</h3>
                   <p class="text-xs text-purple-700 dark:text-purple-300 mt-0.5">
                     Contract: {{ contractAddress.slice(0, 6) }}...{{ contractAddress.slice(-4) }}
                   </p>

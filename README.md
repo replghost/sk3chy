@@ -1,6 +1,6 @@
 # sk3tchy
 
-A peer-to-peer multiplayer drawing game with WebRTC for real-time gameplay. Players compete to guess what the host is drawing, with cryptographic commitments ensuring fair play.
+A peer-to-peer multiplayer drawing game with WebRTC for real-time gameplay and blockchain integration. Players compete to guess what the host is drawing, with cryptographic commitments ensuring fair play. Features BIP-39 word lists and optional on-chain game recording.
 
 ## Tech Stack
 
@@ -14,7 +14,7 @@ A peer-to-peer multiplayer drawing game with WebRTC for real-time gameplay. Play
 - **y-webrtc** - WebRTC provider for Yjs, enables P2P data synchronization
 - **Wagmi + Viem** - Ethereum wallet connection and blockchain interactions
 - **Canvas API** - HTML5 canvas for drawing and rendering
-- **SIWE (Sign-In With Ethereum)** - Cryptographic player authentication (optional)
+- **SIWE (Sign-In With Ethereum)** - Cryptographic player authentication with signatures (optional)
 
 ### Backend (`signaling-server/`)
 - **Bun** - Fast JavaScript runtime for the signaling server
@@ -27,15 +27,39 @@ A peer-to-peer multiplayer drawing game with WebRTC for real-time gameplay. Play
 - **TURN servers** - Relay fallback for restrictive networks (Metered.ca)
 - **ICE (Interactive Connectivity Establishment)** - Connection negotiation
 
+### Smart Contracts (`contracts/`)
+- **Foundry** - Ethereum development framework for smart contracts
+- **Solidity 0.8.20** - Smart contract language
+- **Sk3chyGame.sol** - Main game contract with commit-reveal mechanics
+  - On-chain game creation and tracking
+  - Cryptographic word commitments (keccak256)
+  - Score recording and winner tracking
+  - Event-based architecture for gas efficiency
+- **Polkadot Asset Hub** - Deployment target (EVM-compatible parachain)
+
 ### Game Mechanics
+- **BIP-39 Word Lists** - Curated word dictionaries from Bitcoin's BIP-39 standard
+  - ~800+ drawable words organized by difficulty (Easy/Medium/Hard)
+  - Categorized by type (Animals, Nature, Objects, Food, Actions, etc.)
+  - Ensures fair, recognizable words for all players
 - **Cryptographic Commitments** - Host commits to word choice before game starts
-  - Uses SHA-256 hash with random salt
+  - Uses keccak256 hash with random salt
   - Prevents cheating by revealing word only after game ends
   - All peers verify commitment matches revealed word
+  - Optional on-chain recording via smart contract
+- **8-Player Limit with Spectator Mode** - Active player cap with overflow spectating
+  - First 8 players can actively participate
+  - Additional players become spectators (view-only mode)
+  - Spectators see game but cannot guess or affect results
 - **Word Length Hints** - Players see underlines representing letter count
 - **Real-time Guessing** - Chat-based guessing with instant feedback
 - **Timer System** - Configurable game duration (30s to 5min)
 - **PNG Export** - Canvas snapshots with game metadata
+- **Blockchain Integration** (Optional)
+  - Create games on-chain with verifiable commitments
+  - Record results and scores permanently
+  - Track player wins across all games
+  - Query game history via event logs
 
 ## Structure
 
@@ -43,11 +67,19 @@ A peer-to-peer multiplayer drawing game with WebRTC for real-time gameplay. Play
   - Built with Nuxt 3, Vue 3, and Nuxt UI
   - WebRTC-based peer-to-peer multiplayer
   - Wallet integration with Wagmi
+  - BIP-39 word dictionaries
+  - SIWE authentication support
   
 - **`signaling-server/`** - WebSocket signaling server for WebRTC coordination
   - Room-based peer management
   - Signal relay for WebRTC connections
   - Docker-ready for easy deployment
+
+- **`contracts/`** - Solidity smart contracts for on-chain game tracking
+  - Foundry-based development environment
+  - Sk3chyGame.sol with commit-reveal mechanics
+  - Deployment scripts for Polkadot Asset Hub
+  - See `contracts/README.md` for deployment instructions
 
 ## Getting Started
 
@@ -106,46 +138,55 @@ See `signaling-server/README.md` for detailed deployment instructions.
 
 This monorepo uses Bun workspaces to manage multiple packages.
 
-## Future Development Ideas
+## Features
 
-### Full Decentralization
-- **Remove custom signaling server** - Replace WebSocket signaling with decentralized alternatives:
-  - **Statement** - Decentralized signaling protocol for WebRTC
-  - **IPFS PubSub** - Use IPFS publish/subscribe for peer discovery and signaling
-  - **libp2p** - Peer-to-peer networking stack with built-in discovery
-- **Benefits**: No single point of failure, censorship-resistant, truly P2P
+### ✅ Implemented
+- **P2P Multiplayer** - WebRTC-based real-time gameplay with no central server
+- **BIP-39 Word Lists** - Curated, difficulty-based word selection from Bitcoin's BIP-39 standard
+- **Smart Contract Integration** - Optional on-chain game creation and result recording
+- **Commit-Reveal Mechanics** - Cryptographic commitments prevent host cheating
+- **SIWE Authentication** - Sign-in with Ethereum for verified player identities
+- **8-Player Limit + Spectators** - Active player cap with unlimited spectator viewing
+- **Real-time Drawing & Guessing** - Low-latency canvas synchronization and chat
+- **PNG Export** - Save and share game drawings with metadata
 
-### On-Chain Registration
-- **Smart contract-based game sessions** - Players execute transactions to join games
-  - Prevents Sybil attacks (costs gas to join)
-  - Verifiable player identity via wallet addresses
-  - On-chain record of game participation
-- **Room registry contract** - Track active games and players on-chain
-- **ENS integration** - Display ENS names instead of addresses
-- **Leaderboard contract** - Persistent stats and rankings
+### 🚧 Future Development Ideas
 
-### NFT Generation
-- **Mint drawings as NFTs** - Convert game drawings to on-chain collectibles
-  - Store PNG on IPFS/Arweave
-  - Metadata includes word, winner, timestamp, players
-  - Collaborative artwork ownership
-- **Achievement NFTs** - Reward players for milestones
-  - First win, win streak, perfect guesses, etc.
-- **Dynamic NFTs** - Update metadata based on game outcomes
-- **Royalties** - Split between artist (drawer) and winner
+#### NFT & Marketplace Features
+- **Mint Drawings as NFTs** - Convert game art to collectible NFTs
+  - Store images on IPFS with on-chain metadata
+  - Auto-mint for winners or manual minting by host
+  - ERC-721 standard with ERC-2981 royalties
+- **NFT Gallery** - Browse all minted game drawings
+  - Query past games via blockchain events
+  - Filter by artist, word, date, difficulty
+  - OpenSea/Rarible marketplace integration
+- **Royalty System** - Automatic artist compensation on secondary sales
+  - Split royalties between artist and platform
+  - ERC-2981 standard for marketplace compatibility
 
-### Decentralized Storage
-- **IPFS** - Store game drawings and metadata on IPFS
-  - Pin images via Pinata, NFT.Storage, or Web3.Storage
-  - Content-addressed storage (immutable URLs)
-- **Bulletin Chain Storage** - Alternative permanent storage solution
-  - On-chain data availability for critical game state
-  - Cheaper than storing full images on L1
+#### Enhanced Blockchain Features
+- **Game History** - Query and display past games from on-chain events
+  - Event-based indexing (eth_getLogs)
+  - The Graph subgraph for advanced queries
+  - Leaderboards and player statistics
+- **ENS Integration** - Display ENS names instead of wallet addresses
+- **Token Rewards** - ERC-20 tokens for winners and achievements
+- **Tournament System** - Bracket-style competitions with prize pools
+- **DAO Governance** - Community-driven word lists and game rules
 
-### Additional Ideas
-- **Token rewards** - ERC-20 tokens for winners
-- **Staking mechanics** - Bet on game outcomes
-- **DAO governance** - Community-driven word lists and game rules
-- **Cross-chain support** - Deploy on multiple L2s (Base, Arbitrum, Optimism)
-- **Replay system** - Store and replay drawing sessions
-- **AI judge** - Use ML to validate drawing quality
+#### Decentralization
+- **Decentralized Signaling** - Replace WebSocket server with:
+  - IPFS PubSub for peer discovery
+  - libp2p for P2P networking
+  - Statement protocol for WebRTC signaling
+- **IPFS Storage** - Store drawings and metadata on IPFS
+  - Pinning via Pinata, NFT.Storage, or Web3.Storage
+  - Content-addressed, immutable storage
+
+#### Additional Features
+- **Replay System** - Record and replay drawing sessions
+- **Cross-chain Support** - Deploy on multiple L2s (Base, Arbitrum, Optimism)
+- **Achievement System** - NFT badges for milestones
+- **AI Judge** - ML-based drawing quality validation
+- **Staking Mechanics** - Bet on game outcomes

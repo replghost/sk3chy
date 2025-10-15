@@ -647,7 +647,7 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
                 <span class="text-lg">🔐</span>
                 <div class="flex-1">
                   <h3 class="text-sm font-semibold text-blue-900 dark:text-blue-100">Optional: Sign In with Ethereum</h3>
-                  <p class="text-xs text-blue-700 dark:text-blue-300 mt-0.5">Verify your identity on-chain (optional)</p>
+                  <p class="text-xs text-blue-700 dark:text-blue-300 mt-0.5">Verify your identity with a signature (optional)</p>
                 </div>
               </div>
               

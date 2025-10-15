@@ -15,13 +15,13 @@
       <div class="space-y-6">
         <h2 class="text-2xl font-semibold">Join a Room</h2>
         <div class="flex flex-wrap justify-center gap-4">
-          <UButton to="/game-siwe/1" size="xl" color="primary" variant="solid" class="min-w-32 justify-center">
+          <UButton to="/game-contract/1" size="xl" color="primary" variant="solid" class="min-w-32 justify-center">
             Room 1
           </UButton>
-          <UButton to="/game-siwe/2" size="xl" color="primary" variant="solid" class="min-w-32 justify-center">
+          <UButton to="/game-contract/2" size="xl" color="primary" variant="solid" class="min-w-32 justify-center">
             Room 2
           </UButton>
-          <UButton to="/game-siwe/3" size="xl" color="primary" variant="solid" class="min-w-32 justify-center">
+          <UButton to="/game-contract/3" size="xl" color="primary" variant="solid" class="min-w-32 justify-center">
             Room 3
           </UButton>
         </div>
@@ -63,7 +63,7 @@ const router = useRouter()
 
 function joinCustomRoom() {
   if (customRoom.value) {
-    router.push(`/game-siwe/${customRoom.value}`)
+    router.push(`/game-contract/${customRoom.value}`)
   }
 }
 </script>
