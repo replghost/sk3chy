@@ -57,6 +57,14 @@ const isCommittingWord = ref(false)
 const isRevealingScore = ref(false)
 const contractError = ref<string | null>(null)
 
+// Clear contract state when starting a new game
+function clearContractState() {
+  onChainGameId.value = null
+  wordSalt.value = ''
+  contractError.value = null
+  console.log('[Contract] Contract state cleared for new game')
+}
+
 // Get player wins
 const { data: playerWins } = usePlayerWins(address as any)
 
@@ -1341,7 +1349,7 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
             Clear
           </UButton>
           <UButton 
-            @click="resetGame" 
+            @click="() => { resetGame(); clearContractState() }" 
             color="gray" 
             variant="soft" 
             size="xs"
@@ -1587,11 +1595,11 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
   </section>
 
   <!-- Game Finished Modal (outside section so it's always available) -->
-  <div v-if="showFinishModal && gameState.status === 'finished'" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 md:p-4" style="z-index: 99999;" @click.self="() => { resetGame(); selectedWordLocal = null; showFinishModal = false }">
+  <div v-if="showFinishModal && gameState.status === 'finished'" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 md:p-4" style="z-index: 99999;" @click.self="() => { resetGame(); clearContractState(); selectedWordLocal = null; showFinishModal = false }">
     <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-4xl w-full max-h-[95vh] md:max-h-none overflow-y-auto p-3 md:p-6 relative">
       <!-- Close button (mobile only) -->
       <button
-        @click="() => { resetGame(); selectedWordLocal = null; showFinishModal = false }"
+        @click="() => { resetGame(); clearContractState(); selectedWordLocal = null; showFinishModal = false }"
         class="md:hidden absolute top-2 left-2 p-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-full transition-colors z-10"
         title="Close"
       >
@@ -1667,7 +1675,7 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
           
           <div class="mt-3 md:mt-4 flex justify-center">
             <UButton
-              @click.stop="() => { console.log('Reset clicked'); resetGame(); selectedWordLocal = null; showFinishModal = false }"
+              @click.stop="() => { console.log('Reset clicked'); resetGame(); clearContractState(); selectedWordLocal = null; showFinishModal = false }"
               color="primary"
               size="lg"
             >
