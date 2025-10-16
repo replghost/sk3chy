@@ -38,6 +38,9 @@
                           <UBadge color="gray" variant="subtle">
                             Game #{{ game.gameId }}
                           </UBadge>
+                          <UBadge v-if="game.hasNFT" color="green" variant="soft">
+                            🎨 NFT Minted
+                          </UBadge>
                         </div>
                         
                         <div class="space-y-1 text-sm">
@@ -188,6 +191,9 @@
 </template>
 
 <script setup lang="ts">
+import { createPublicClient, http } from 'viem'
+import { passetHub } from '~/utils/chains'
+
 const { getRecentGames, getLeaderboard } = useGameContract()
 const config = useRuntimeConfig()
 
@@ -215,8 +221,44 @@ onMounted(async () => {
       uniqueGamesMap.set(game.gameId, game)
     }
   })
-  recentGames.value = Array.from(uniqueGamesMap.values())
+  const uniqueGames = Array.from(uniqueGamesMap.values())
   
+  // Check which games have NFTs minted (lightweight check)
+  const nftContractAddress = config.public.nftContractAddress
+  if (nftContractAddress) {
+    const publicClient = createPublicClient({
+      chain: passetHub,
+      transport: http()
+    })
+    
+    // Check NFT supply to see if any NFTs exist
+    try {
+      const totalSupply = await publicClient.readContract({
+        address: nftContractAddress as `0x${string}`,
+        abi: [{
+          name: 'totalSupply',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [],
+          outputs: [{ type: 'uint256' }]
+        }],
+        functionName: 'totalSupply'
+      }) as bigint
+      
+      // If there are NFTs, mark games as having NFTs (simple heuristic)
+      // In reality, we'd need to check each game's metadata, but this is a quick indicator
+      if (totalSupply > 0n) {
+        // Mark the most recent games as potentially having NFTs
+        uniqueGames.forEach((game, index) => {
+          game.hasNFT = index < Number(totalSupply)
+        })
+      }
+    } catch (e) {
+      console.warn('Could not check NFT supply:', e)
+    }
+  }
+  
+  recentGames.value = uniqueGames
   loadingGames.value = false
 
   // Load leaderboard

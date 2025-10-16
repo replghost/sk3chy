@@ -79,7 +79,7 @@ export function useIPFSUpload() {
         name: `sk3tchy: ${metadata.word}`,
         description: `A drawing of "${metadata.word}" created in the sk3tchy game`,
         image: `ipfs://${imageCid}`,
-        external_url: 'https://sk3tchy.app',
+        external_url: 'https://sk3chy.com/gallery',
         attributes: [
           {
             trait_type: 'Word',
