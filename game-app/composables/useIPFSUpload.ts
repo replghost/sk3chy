@@ -1,4 +1,4 @@
-// Using Pinata v3 API directly with fetch
+// Using Pinata API (pinFileToIPFS endpoint) with fetch
 export function useIPFSUpload() {
   const config = useRuntimeConfig()
   const uploading = ref(false)
@@ -34,7 +34,7 @@ export function useIPFSUpload() {
         throw new Error('Pinata Gateway not configured. Add NUXT_PUBLIC_PINATA_GATEWAY to your .env file')
       }
 
-      console.log('[IPFS] Starting upload with Pinata v3 API...')
+      console.log('[IPFS] Starting upload with Pinata API...')
       progress.value = 20
 
       // Convert canvas to blob
@@ -51,12 +51,12 @@ export function useIPFSUpload() {
       console.log('[IPFS] Canvas converted to blob, size:', blob.size)
       progress.value = 40
 
-      // Upload image to Pinata v3 API
+      // Upload image to Pinata (using pinFileToIPFS endpoint)
       const imageFile = new File([blob], 'drawing.png', { type: 'image/png' })
       const imageFormData = new FormData()
       imageFormData.append('file', imageFile)
       
-      const imageResponse = await fetch('https://uploads.pinata.cloud/v3/files', {
+      const imageResponse = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${jwt}`
@@ -65,13 +65,13 @@ export function useIPFSUpload() {
       })
 
       if (!imageResponse.ok) {
-        const errorData = await imageResponse.json()
-        throw new Error(`Image upload failed: ${JSON.stringify(errorData)}`)
+        const errorText = await imageResponse.text()
+        throw new Error(`Image upload failed (${imageResponse.status}): ${errorText}`)
       }
 
       const imageData = await imageResponse.json()
       console.log('[IPFS] Image uploaded:', imageData)
-      const imageCid = imageData.data.cid
+      const imageCid = imageData.IpfsHash
       progress.value = 70
 
       // Create and upload metadata
@@ -120,13 +120,13 @@ export function useIPFSUpload() {
         ]
       }
 
-      // Upload metadata JSON to Pinata v3 API
+      // Upload metadata JSON to Pinata
       const metadataBlob = new Blob([JSON.stringify(nftMetadata)], { type: 'application/json' })
       const metadataFile = new File([metadataBlob], 'metadata.json', { type: 'application/json' })
       const metadataFormData = new FormData()
       metadataFormData.append('file', metadataFile)
       
-      const metadataResponse = await fetch('https://uploads.pinata.cloud/v3/files', {
+      const metadataResponse = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${jwt}`
@@ -135,13 +135,13 @@ export function useIPFSUpload() {
       })
 
       if (!metadataResponse.ok) {
-        const errorData = await metadataResponse.json()
-        throw new Error(`Metadata upload failed: ${JSON.stringify(errorData)}`)
+        const errorText = await metadataResponse.text()
+        throw new Error(`Metadata upload failed (${metadataResponse.status}): ${errorText}`)
       }
 
       const metadataData = await metadataResponse.json()
       console.log('[IPFS] Metadata uploaded:', metadataData)
-      const metadataCid = metadataData.data.cid
+      const metadataCid = metadataData.IpfsHash
       progress.value = 100
 
       const result = {
