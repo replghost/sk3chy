@@ -316,14 +316,29 @@ async function handleUploadToIPFS() {
   }
 }
 
-// Mint NFT after IPFS upload
+// Combined: Upload to IPFS and Mint NFT in one action
 async function handleMintNFT() {
-  if (!ipfsResult.value || !NFT_CONTRACT_ADDRESS) {
-    console.error('[NFT] Missing IPFS result or contract address')
+  if (!NFT_CONTRACT_ADDRESS) {
+    console.error('[NFT] NFT contract address not configured')
     return
   }
 
   try {
+    // Step 1: Upload to IPFS (if not already done)
+    if (!ipfsResult.value) {
+      console.log('[NFT] Uploading to IPFS first...')
+      await handleUploadToIPFS()
+      
+      // Wait a bit for ipfsResult to be set
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      if (!ipfsResult.value) {
+        throw new Error('IPFS upload failed')
+      }
+    }
+
+    // Step 2: Mint NFT with the IPFS metadata
+    console.log('[NFT] Minting NFT...')
     const result = await mintNFT(
       NFT_CONTRACT_ADDRESS,
       ipfsResult.value.suggestedRecipient,
@@ -1863,33 +1878,38 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
             </div>
           </div>
           
-          <!-- IPFS Upload Section -->
+          <!-- Mint NFT Section -->
           <div class="mt-4 space-y-2">
+            <!-- Main Mint Button -->
             <UButton
-              @click="handleUploadToIPFS"
-              :loading="uploadingToIPFS"
-              :disabled="uploadingToIPFS || !!ipfsResult"
+              v-if="NFT_CONTRACT_ADDRESS && !mintedTokenId"
+              @click="handleMintNFT"
+              :loading="uploadingToIPFS || mintingNFT"
+              :disabled="uploadingToIPFS || mintingNFT"
               block
-              color="purple"
-              variant="soft"
+              color="green"
+              size="lg"
             >
               <template v-if="uploadingToIPFS">
                 📦 Uploading to IPFS... {{ ipfsProgress }}%
               </template>
-              <template v-else-if="ipfsResult">
-                ✅ Uploaded to IPFS
+              <template v-else-if="mintingNFT">
+                🎨 Minting NFT...
               </template>
               <template v-else>
-                📦 Upload to IPFS (for NFT)
+                🎨 Mint NFT
               </template>
             </UButton>
 
-            <!-- IPFS Error -->
+            <!-- Errors -->
             <div v-if="ipfsError" class="text-sm text-red-600 dark:text-red-400 px-2">
-              ❌ {{ ipfsError }}
+              ❌ IPFS: {{ ipfsError }}
+            </div>
+            <div v-if="mintError" class="text-sm text-red-600 dark:text-red-400 px-2">
+              ❌ Minting: {{ mintError }}
             </div>
 
-            <!-- IPFS Success - Show recipient and links -->
+            <!-- Success - Show recipient and NFT info -->
             <div v-if="ipfsResult" class="space-y-2 px-2">
               <!-- NFT Recipient Info -->
               <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
@@ -1932,51 +1952,43 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
                   </a>
                 </div>
               </div>
-              
-              <!-- Mint NFT Button -->
-              <UButton
-                v-if="NFT_CONTRACT_ADDRESS && !mintedTokenId"
-                @click="handleMintNFT"
-                :loading="mintingNFT"
-                :disabled="mintingNFT"
-                block
-                color="green"
-                class="mt-2"
-              >
-                <template v-if="mintingNFT">
-                  🎨 Minting NFT...
-                </template>
-                <template v-else>
-                  🎨 Mint NFT
-                </template>
-              </UButton>
-              
-              <!-- Mint Success -->
-              <div v-if="mintedTokenId" class="mt-2 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded text-center">
-                <p class="text-sm font-semibold text-green-900 dark:text-green-100">
-                  ✅ NFT Minted! Token ID: {{ mintedTokenId.toString() }}
+            </div>
+
+            <!-- Mint Success -->
+            <div v-if="mintedTokenId" class="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="text-2xl">🎉</span>
+                <p class="text-sm font-bold text-green-900 dark:text-green-100">
+                  NFT Minted Successfully!
                 </p>
+              </div>
+              <p class="text-xs text-green-700 dark:text-green-300 mb-2">
+                Token ID: <span class="font-mono font-bold">{{ mintedTokenId.toString() }}</span>
+              </p>
+              <div class="flex gap-2">
                 <a 
                   v-if="mintTxHash"
                   :href="`https://blockscout-passet-hub.parity-testnet.parity.io/tx/${mintTxHash}`"
                   target="_blank"
                   class="text-xs text-green-600 dark:text-green-400 hover:underline"
                 >
-                  View Transaction
+                  View Transaction →
+                </a>
+                <a 
+                  :href="`https://blockscout-passet-hub.parity-testnet.parity.io/token/${NFT_CONTRACT_ADDRESS}/instance/${mintedTokenId}`"
+                  target="_blank"
+                  class="text-xs text-green-600 dark:text-green-400 hover:underline"
+                >
+                  View NFT →
                 </a>
               </div>
-              
-              <!-- Mint Error -->
-              <div v-if="mintError" class="mt-2 text-sm text-red-600 dark:text-red-400">
-                ❌ {{ mintError }}
-              </div>
-              
-              <!-- Setup Warning -->
-              <div v-if="!NFT_CONTRACT_ADDRESS" class="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
-                <p class="text-xs text-yellow-800 dark:text-yellow-200">
-                  ⚠️ NFT contract not configured. Deploy the Sk3tchyNFT contract and add the address to mint NFTs.
-                </p>
-              </div>
+            </div>
+
+            <!-- Setup Warning -->
+            <div v-if="!NFT_CONTRACT_ADDRESS" class="p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+              <p class="text-xs text-yellow-800 dark:text-yellow-200">
+                ⚠️ NFT contract not configured. Deploy the Sk3tchyNFT contract and add the address to mint NFTs.
+              </p>
             </div>
           </div>
           

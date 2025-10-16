@@ -28,157 +28,96 @@
               <div 
                 v-for="game in recentGames" 
                 :key="game.gameId"
-                class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow"
-              >
-                <div class="flex items-start justify-between flex-wrap gap-4">
-                  <!-- Game Info -->
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-3 mb-2">
-                      <h3 class="text-2xl font-bold">{{ game.word }}</h3>
-                      <UBadge color="gray" variant="subtle">
-                        Game #{{ game.gameId }}
-                      </UBadge>
-                    </div>
-                    
-                    <div class="space-y-1 text-sm">
-                      <p class="text-gray-600 dark:text-gray-400">
-                        <span class="font-semibold">Artist:</span>
-                        <NuxtLink 
-                          :to="`/player/${game.host}`"
-                          class="ml-1 hover:text-primary underline"
-                        >
-                          {{ formatAddress(game.host) }}
-                        </NuxtLink>
-                      </p>
-                      <p class="text-gray-500 dark:text-gray-500 text-xs">
-                        {{ formatDate(game.timestamp) }}
-                      </p>
-                    </div>
-                  </div>
-
-                  <!-- Winners -->
-                  <div class="text-right">
-                    <p class="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-                      Winners ({{ game.winners.length }})
-                    </p>
-                    <div class="space-y-1">
-                      <div 
-                        v-for="(winner, i) in game.winners.slice(0, 3)" 
-                        :key="winner"
-                        class="text-xs"
-                      >
-                        <NuxtLink 
-                          :to="`/player/${winner}`"
-                          class="hover:text-primary underline"
-                        >
-                          {{ formatAddress(winner) }}
-                        </NuxtLink>
-                        <span class="text-gray-500 ml-1">({{ game.scores[i] }} pts)</span>
-                      </div>
-                      <p v-if="game.winners.length > 3" class="text-xs text-gray-500">
-                        +{{ game.winners.length - 3 }} more
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Actions -->
-                <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex gap-2">
-                  <UButton 
-                    size="xs" 
-                    variant="ghost"
-                    @click="viewOnExplorer(game.transactionHash)"
-                  >
-                    View on Explorer
-                  </UButton>
-                </div>
-              </div>
-            </div>
-          </div>
-        </template>
-
-        <!-- NFT Gallery Tab -->
-        <template #nfts>
-          <div class="space-y-4 py-6">
-            <div v-if="loadingNFTs" class="text-center py-12">
-              <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              <p class="mt-4 text-gray-600 dark:text-gray-400">Loading NFTs...</p>
-            </div>
-
-            <div v-else-if="nfts.length === 0" class="text-center py-12">
-              <p class="text-gray-600 dark:text-gray-400">No NFTs minted yet.</p>
-              <p class="text-sm text-gray-500 mt-2">Play a game and mint your first drawing!</p>
-            </div>
-
-            <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div 
-                v-for="nft in nfts" 
-                :key="nft.tokenId"
                 class="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow"
               >
-                <!-- NFT Image -->
-                <div class="aspect-square bg-gray-100 dark:bg-gray-900 relative">
-                  <img 
-                    v-if="nft.imageUrl"
-                    :src="nft.imageUrl" 
-                    :alt="nft.name"
-                    class="w-full h-full object-contain"
-                    @error="(e) => (e.target as HTMLImageElement).src = '/placeholder-nft.png'"
-                  />
-                  <div v-else class="w-full h-full flex items-center justify-center">
-                    <span class="text-4xl">🎨</span>
-                  </div>
-                  
-                  <!-- Token ID Badge -->
-                  <div class="absolute top-2 right-2">
-                    <UBadge color="primary" variant="solid">
-                      #{{ nft.tokenId }}
-                    </UBadge>
-                  </div>
-                </div>
-
-                <!-- NFT Info -->
-                <div class="p-4 space-y-3">
-                  <div>
-                    <h3 class="font-bold text-lg">{{ nft.name }}</h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                      {{ nft.description }}
-                    </p>
+                <div class="flex flex-col md:flex-row gap-4">
+                  <!-- NFT Image (if exists) -->
+                  <div 
+                    v-if="game.nft?.imageUrl" 
+                    class="md:w-48 md:h-48 w-full h-64 bg-gray-100 dark:bg-gray-900 flex-shrink-0"
+                  >
+                    <img 
+                      :src="game.nft.imageUrl" 
+                      :alt="game.word"
+                      class="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                      @click="() => { selectedNFT = game.nft; showNFTModal = true }"
+                    />
                   </div>
 
-                  <!-- Attributes -->
-                  <div v-if="nft.attributes && nft.attributes.length > 0" class="space-y-1">
-                    <div 
-                      v-for="attr in nft.attributes.slice(0, 3)" 
-                      :key="attr.trait_type"
-                      class="flex justify-between text-xs"
-                    >
-                      <span class="text-gray-500 dark:text-gray-400">{{ attr.trait_type }}:</span>
-                      <span class="font-medium">{{ attr.value }}</span>
+                  <!-- Game Info -->
+                  <div class="flex-1 p-6 min-w-0">
+                    <div class="flex items-start justify-between flex-wrap gap-4 mb-4">
+                      <div class="flex-1">
+                        <div class="flex items-center gap-3 mb-2">
+                          <h3 class="text-2xl font-bold">{{ game.word }}</h3>
+                          <UBadge color="gray" variant="subtle">
+                            Game #{{ game.gameId }}
+                          </UBadge>
+                          <UBadge v-if="game.nft" color="green" variant="subtle">
+                            🎨 NFT #{{ game.nft.tokenId }}
+                          </UBadge>
+                        </div>
+                        
+                        <div class="space-y-1 text-sm">
+                          <p class="text-gray-600 dark:text-gray-400">
+                            <span class="font-semibold">Artist:</span>
+                            <NuxtLink 
+                              :to="`/player/${game.host}`"
+                              class="ml-1 hover:text-primary underline"
+                            >
+                              {{ formatAddress(game.host) }}
+                            </NuxtLink>
+                          </p>
+                          <p class="text-gray-500 dark:text-gray-500 text-xs">
+                            {{ formatDate(game.timestamp) }}
+                          </p>
+                        </div>
+                      </div>
+
+                      <!-- Winners -->
+                      <div class="text-right">
+                        <p class="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                          Winners ({{ game.winners.length }})
+                        </p>
+                        <div class="space-y-1">
+                          <div 
+                            v-for="(winner, i) in game.winners.slice(0, 3)" 
+                            :key="winner"
+                            class="text-xs"
+                          >
+                            <NuxtLink 
+                              :to="`/player/${winner}`"
+                              class="hover:text-primary underline"
+                            >
+                              {{ formatAddress(winner) }}
+                            </NuxtLink>
+                            <span class="text-gray-500 ml-1">({{ game.scores[i] }} pts)</span>
+                          </div>
+                          <p v-if="game.winners.length > 3" class="text-xs text-gray-500">
+                            +{{ game.winners.length - 3 }} more
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  <!-- Owner -->
-                  <div class="pt-3 border-t border-gray-200 dark:border-gray-700">
-                    <p class="text-xs text-gray-500 dark:text-gray-400">Owner</p>
-                    <NuxtLink 
-                      :to="`/player/${nft.owner}`"
-                      class="text-sm font-medium hover:text-primary underline"
-                    >
-                      {{ formatAddress(nft.owner) }}
-                    </NuxtLink>
-                  </div>
-
-                  <!-- Actions -->
-                  <div class="flex gap-2">
-                    <UButton 
-                      size="xs" 
-                      variant="ghost"
-                      block
-                      @click="viewNFTOnExplorer(nft.tokenId)"
-                    >
-                      View on Explorer
-                    </UButton>
+                    <!-- Actions -->
+                    <div class="flex gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
+                      <UButton 
+                        size="xs" 
+                        variant="ghost"
+                        @click="viewOnExplorer(game.transactionHash)"
+                      >
+                        View Transaction
+                      </UButton>
+                      <UButton 
+                        v-if="game.nft"
+                        size="xs" 
+                        variant="soft"
+                        @click="() => { selectedNFT = game.nft; showNFTModal = true }"
+                      >
+                        View NFT Details
+                      </UButton>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -272,6 +211,127 @@
         </template>
       </UTabs>
     </div>
+
+    <!-- NFT Details Modal -->
+    <UModal v-model="showNFTModal" :ui="{ width: 'max-w-2xl' }">
+      <div v-if="selectedNFT" class="p-6">
+        <div class="flex items-start justify-between mb-4">
+          <h2 class="text-2xl font-bold">{{ selectedNFT.name }}</h2>
+          <UButton
+            icon="i-heroicons-x-mark"
+            color="gray"
+            variant="ghost"
+            @click="showNFTModal = false"
+          />
+        </div>
+
+        <!-- NFT Image -->
+        <div class="aspect-square bg-gray-100 dark:bg-gray-900 rounded-lg overflow-hidden mb-4">
+          <img 
+            v-if="selectedNFT.imageUrl"
+            :src="selectedNFT.imageUrl" 
+            :alt="selectedNFT.name"
+            class="w-full h-full object-contain"
+          />
+        </div>
+
+        <!-- Description -->
+        <p class="text-gray-600 dark:text-gray-400 mb-4">
+          {{ selectedNFT.description }}
+        </p>
+
+        <!-- Metadata -->
+        <div class="space-y-4">
+          <div>
+            <h3 class="font-semibold mb-2">Details</h3>
+            <div class="grid grid-cols-2 gap-2 text-sm">
+              <div class="bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                <p class="text-gray-500 dark:text-gray-400">Token ID</p>
+                <p class="font-mono font-bold">{{ selectedNFT.tokenId }}</p>
+              </div>
+              <div class="bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                <p class="text-gray-500 dark:text-gray-400">Game ID</p>
+                <p class="font-mono font-bold">{{ selectedNFT.gameId || 'N/A' }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Attributes -->
+          <div v-if="selectedNFT.attributes && selectedNFT.attributes.length > 0">
+            <h3 class="font-semibold mb-2">Attributes</h3>
+            <div class="grid grid-cols-2 gap-2 text-sm">
+              <div 
+                v-for="attr in selectedNFT.attributes" 
+                :key="attr.trait_type"
+                class="bg-gray-50 dark:bg-gray-800 p-2 rounded"
+              >
+                <p class="text-gray-500 dark:text-gray-400">{{ attr.trait_type }}</p>
+                <p class="font-medium">{{ attr.value }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Owner -->
+          <div>
+            <h3 class="font-semibold mb-2">Owner</h3>
+            <div class="bg-gray-50 dark:bg-gray-800 p-3 rounded">
+              <NuxtLink 
+                :to="`/player/${selectedNFT.owner}`"
+                class="font-mono text-sm hover:text-primary underline"
+              >
+                {{ selectedNFT.owner }}
+              </NuxtLink>
+            </div>
+          </div>
+
+          <!-- Raw Metadata -->
+          <div v-if="selectedNFT.metadata">
+            <h3 class="font-semibold mb-2">Metadata JSON</h3>
+            <div class="bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-60">
+              <pre class="text-xs font-mono">{{ JSON.stringify(selectedNFT.metadata, null, 2) }}</pre>
+            </div>
+          </div>
+
+          <!-- IPFS Links -->
+          <div>
+            <h3 class="font-semibold mb-2">IPFS Links</h3>
+            <div class="space-y-2 text-xs">
+              <div class="flex items-center gap-2">
+                <span class="text-gray-500 dark:text-gray-400">Metadata:</span>
+                <a 
+                  :href="`https://gateway.pinata.cloud/ipfs/${selectedNFT.tokenURI.replace('ipfs://', '')}`"
+                  target="_blank"
+                  class="text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  View on IPFS →
+                </a>
+              </div>
+              <div v-if="selectedNFT.metadata?.image" class="flex items-center gap-2">
+                <span class="text-gray-500 dark:text-gray-400">Image:</span>
+                <a 
+                  :href="selectedNFT.imageUrl"
+                  target="_blank"
+                  class="text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  View on IPFS →
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <UButton 
+              block
+              variant="soft"
+              @click="viewNFTOnExplorer(selectedNFT.tokenId)"
+            >
+              View on BlockScout
+            </UButton>
+          </div>
+        </div>
+      </div>
+    </UModal>
   </div>
 </template>
 
@@ -283,8 +343,7 @@ const config = useRuntimeConfig()
 const selectedTab = ref(0)
 const tabs = [
   { label: 'Recent Games', slot: 'recent' },
-  { label: 'Leaderboard', slot: 'leaderboard' },
-  { label: 'NFT Gallery', slot: 'nfts' }
+  { label: 'Leaderboard', slot: 'leaderboard' }
 ]
 
 const recentGames = ref<any[]>([])
@@ -293,22 +352,49 @@ const nfts = ref<any[]>([])
 const loadingGames = ref(true)
 const loadingLeaderboard = ref(true)
 const loadingNFTs = ref(true)
+const selectedNFT = ref<any>(null)
+const showNFTModal = ref(false)
 
 onMounted(async () => {
-  // Load recent games
+  // Load recent games and NFTs in parallel
   loadingGames.value = true
-  recentGames.value = await getRecentGames(20)
+  const [games, allNFTs] = await Promise.all([
+    getRecentGames(20),
+    getAllNFTs()
+  ])
+  
+  console.log('[Stats] Raw games:', games)
+  console.log('[Stats] All NFTs:', allNFTs)
+  
+  // Deduplicate games by gameId (keep the most recent one)
+  const uniqueGamesMap = new Map()
+  games.forEach(game => {
+    const existing = uniqueGamesMap.get(game.gameId)
+    if (!existing || game.timestamp > existing.timestamp) {
+      uniqueGamesMap.set(game.gameId, game)
+    }
+  })
+  const uniqueGames = Array.from(uniqueGamesMap.values())
+  
+  console.log('[Stats] Unique games after dedup:', uniqueGames)
+  
+  // Match NFTs to games by gameId
+  recentGames.value = uniqueGames.map(game => {
+    const nft = allNFTs.find(n => n.gameId === game.gameId)
+    return {
+      ...game,
+      nft // Add NFT data if it exists
+    }
+  })
+  
+  console.log('[Stats] Final recent games with NFTs:', recentGames.value)
+  
   loadingGames.value = false
 
   // Load leaderboard
   loadingLeaderboard.value = true
   leaderboard.value = await getLeaderboard()
   loadingLeaderboard.value = false
-
-  // Load NFTs
-  loadingNFTs.value = true
-  nfts.value = await getAllNFTs()
-  loadingNFTs.value = false
 })
 
 function formatAddress(address: string) {
