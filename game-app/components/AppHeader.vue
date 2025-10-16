@@ -30,6 +30,22 @@
                   Stats
                 </UButton>
                 
+                <!-- Gallery -->
+                <UButton 
+                  variant="ghost" 
+                  to="/gallery" 
+                  size="sm" 
+                  color="gray"
+                  block
+                  class="justify-start"
+                  @click="close"
+                >
+                  <template #leading>
+                    <UIcon name="i-heroicons-photo" />
+                  </template>
+                  Gallery
+                </UButton>
+                
                 <UDivider />
                 
                 <!-- Quick Rooms -->
@@ -126,6 +142,18 @@
             :class="{ 'underline decoration-2 underline-offset-8': currentPath === '/stats' }"
           >
             Stats
+          </UButton>
+          
+          <!-- Gallery - hidden on mobile -->
+          <UButton 
+            variant="ghost" 
+            to="/gallery" 
+            size="sm" 
+            color="gray" 
+            class="hidden md:inline-flex"
+            :class="{ 'underline decoration-2 underline-offset-8': currentPath === '/gallery' }"
+          >
+            Gallery
           </UButton>
           
           <UDivider orientation="vertical" class="h-6 mx-1 md:mx-2 hidden md:block" />

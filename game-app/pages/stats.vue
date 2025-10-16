@@ -30,31 +30,13 @@
                 :key="game.gameId"
                 class="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow"
               >
-                <div class="flex flex-col md:flex-row gap-4">
-                  <!-- NFT Image (if exists) -->
-                  <div 
-                    v-if="game.nft?.imageUrl" 
-                    class="md:w-48 md:h-48 w-full h-64 bg-gray-100 dark:bg-gray-900 flex-shrink-0"
-                  >
-                    <img 
-                      :src="game.nft.imageUrl" 
-                      :alt="game.word"
-                      class="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                      @click="() => { selectedNFT = game.nft; showNFTModal = true }"
-                    />
-                  </div>
-
-                  <!-- Game Info -->
-                  <div class="flex-1 p-6 min-w-0">
+                <div class="p-6">
                     <div class="flex items-start justify-between flex-wrap gap-4 mb-4">
                       <div class="flex-1">
                         <div class="flex items-center gap-3 mb-2">
                           <h3 class="text-2xl font-bold">{{ game.word }}</h3>
                           <UBadge color="gray" variant="subtle">
                             Game #{{ game.gameId }}
-                          </UBadge>
-                          <UBadge v-if="game.nft" color="green" variant="subtle">
-                            🎨 NFT #{{ game.nft.tokenId }}
                           </UBadge>
                         </div>
                         
@@ -109,16 +91,7 @@
                       >
                         View Transaction
                       </UButton>
-                      <UButton 
-                        v-if="game.nft"
-                        size="xs" 
-                        variant="soft"
-                        @click="() => { selectedNFT = game.nft; showNFTModal = true }"
-                      >
-                        View NFT Details
-                      </UButton>
                     </div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -211,133 +184,11 @@
         </template>
       </UTabs>
     </div>
-
-    <!-- NFT Details Modal -->
-    <UModal v-model="showNFTModal" :ui="{ width: 'max-w-2xl' }">
-      <div v-if="selectedNFT" class="p-6">
-        <div class="flex items-start justify-between mb-4">
-          <h2 class="text-2xl font-bold">{{ selectedNFT.name }}</h2>
-          <UButton
-            icon="i-heroicons-x-mark"
-            color="gray"
-            variant="ghost"
-            @click="showNFTModal = false"
-          />
-        </div>
-
-        <!-- NFT Image -->
-        <div class="aspect-square bg-gray-100 dark:bg-gray-900 rounded-lg overflow-hidden mb-4">
-          <img 
-            v-if="selectedNFT.imageUrl"
-            :src="selectedNFT.imageUrl" 
-            :alt="selectedNFT.name"
-            class="w-full h-full object-contain"
-          />
-        </div>
-
-        <!-- Description -->
-        <p class="text-gray-600 dark:text-gray-400 mb-4">
-          {{ selectedNFT.description }}
-        </p>
-
-        <!-- Metadata -->
-        <div class="space-y-4">
-          <div>
-            <h3 class="font-semibold mb-2">Details</h3>
-            <div class="grid grid-cols-2 gap-2 text-sm">
-              <div class="bg-gray-50 dark:bg-gray-800 p-2 rounded">
-                <p class="text-gray-500 dark:text-gray-400">Token ID</p>
-                <p class="font-mono font-bold">{{ selectedNFT.tokenId }}</p>
-              </div>
-              <div class="bg-gray-50 dark:bg-gray-800 p-2 rounded">
-                <p class="text-gray-500 dark:text-gray-400">Game ID</p>
-                <p class="font-mono font-bold">{{ selectedNFT.gameId || 'N/A' }}</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Attributes -->
-          <div v-if="selectedNFT.attributes && selectedNFT.attributes.length > 0">
-            <h3 class="font-semibold mb-2">Attributes</h3>
-            <div class="grid grid-cols-2 gap-2 text-sm">
-              <div 
-                v-for="attr in selectedNFT.attributes" 
-                :key="attr.trait_type"
-                class="bg-gray-50 dark:bg-gray-800 p-2 rounded"
-              >
-                <p class="text-gray-500 dark:text-gray-400">{{ attr.trait_type }}</p>
-                <p class="font-medium">{{ attr.value }}</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Owner -->
-          <div>
-            <h3 class="font-semibold mb-2">Owner</h3>
-            <div class="bg-gray-50 dark:bg-gray-800 p-3 rounded">
-              <NuxtLink 
-                :to="`/player/${selectedNFT.owner}`"
-                class="font-mono text-sm hover:text-primary underline"
-              >
-                {{ selectedNFT.owner }}
-              </NuxtLink>
-            </div>
-          </div>
-
-          <!-- Raw Metadata -->
-          <div v-if="selectedNFT.metadata">
-            <h3 class="font-semibold mb-2">Metadata JSON</h3>
-            <div class="bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-60">
-              <pre class="text-xs font-mono">{{ JSON.stringify(selectedNFT.metadata, null, 2) }}</pre>
-            </div>
-          </div>
-
-          <!-- IPFS Links -->
-          <div>
-            <h3 class="font-semibold mb-2">IPFS Links</h3>
-            <div class="space-y-2 text-xs">
-              <div class="flex items-center gap-2">
-                <span class="text-gray-500 dark:text-gray-400">Metadata:</span>
-                <a 
-                  :href="`https://gateway.pinata.cloud/ipfs/${selectedNFT.tokenURI.replace('ipfs://', '')}`"
-                  target="_blank"
-                  class="text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  View on IPFS →
-                </a>
-              </div>
-              <div v-if="selectedNFT.metadata?.image" class="flex items-center gap-2">
-                <span class="text-gray-500 dark:text-gray-400">Image:</span>
-                <a 
-                  :href="selectedNFT.imageUrl"
-                  target="_blank"
-                  class="text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  View on IPFS →
-                </a>
-              </div>
-            </div>
-          </div>
-
-          <!-- Actions -->
-          <div class="flex gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <UButton 
-              block
-              variant="soft"
-              @click="viewNFTOnExplorer(selectedNFT.tokenId)"
-            >
-              View on BlockScout
-            </UButton>
-          </div>
-        </div>
-      </div>
-    </UModal>
   </div>
 </template>
 
 <script setup lang="ts">
 const { getRecentGames, getLeaderboard } = useGameContract()
-const { getAllNFTs } = useNFTGallery()
 const config = useRuntimeConfig()
 
 const selectedTab = ref(0)
@@ -348,23 +199,13 @@ const tabs = [
 
 const recentGames = ref<any[]>([])
 const leaderboard = ref<any[]>([])
-const nfts = ref<any[]>([])
 const loadingGames = ref(true)
 const loadingLeaderboard = ref(true)
-const loadingNFTs = ref(true)
-const selectedNFT = ref<any>(null)
-const showNFTModal = ref(false)
 
 onMounted(async () => {
-  // Load recent games and NFTs in parallel
+  // Load recent games
   loadingGames.value = true
-  const [games, allNFTs] = await Promise.all([
-    getRecentGames(20),
-    getAllNFTs()
-  ])
-  
-  console.log('[Stats] Raw games:', games)
-  console.log('[Stats] All NFTs:', allNFTs)
+  const games = await getRecentGames(20)
   
   // Deduplicate games by gameId (keep the most recent one)
   const uniqueGamesMap = new Map()
@@ -374,20 +215,7 @@ onMounted(async () => {
       uniqueGamesMap.set(game.gameId, game)
     }
   })
-  const uniqueGames = Array.from(uniqueGamesMap.values())
-  
-  console.log('[Stats] Unique games after dedup:', uniqueGames)
-  
-  // Match NFTs to games by gameId
-  recentGames.value = uniqueGames.map(game => {
-    const nft = allNFTs.find(n => n.gameId === game.gameId)
-    return {
-      ...game,
-      nft // Add NFT data if it exists
-    }
-  })
-  
-  console.log('[Stats] Final recent games with NFTs:', recentGames.value)
+  recentGames.value = Array.from(uniqueGamesMap.values())
   
   loadingGames.value = false
 
@@ -420,14 +248,6 @@ function formatDate(timestamp: number) {
 function viewOnExplorer(txHash: string) {
   window.open(
     `https://blockscout-passet-hub.parity-testnet.parity.io/tx/${txHash}`,
-    '_blank'
-  )
-}
-
-function viewNFTOnExplorer(tokenId: number) {
-  const nftAddress = config.public.nftContractAddress
-  window.open(
-    `https://blockscout-passet-hub.parity-testnet.parity.io/token/${nftAddress}/instance/${tokenId}`,
     '_blank'
   )
 }

@@ -12,6 +12,7 @@ export default defineNuxtConfig({
       turnCredential: process.env.NUXT_PUBLIC_TURN_CREDENTIAL || '',
       contractAddress: process.env.NUXT_PUBLIC_CONTRACT_ADDRESS || '0x0CdDBa8De3211cDB5f3b039F0e4B892fc189E6E1',
       pinataJwt: process.env.NUXT_PUBLIC_PINATA_JWT || '',
+      pinataJwtRead: process.env.NUXT_PUBLIC_PINATA_JWT_READ || '',
       pinataGateway: process.env.NUXT_PUBLIC_PINATA_GATEWAY || '',
       nftContractAddress: process.env.NUXT_PUBLIC_NFT_CONTRACT_ADDRESS || ''
     }
