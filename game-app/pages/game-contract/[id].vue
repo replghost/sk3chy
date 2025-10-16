@@ -49,6 +49,15 @@ const {
   getExplorerUrl,
 } = useGameContract()
 
+// IPFS Upload
+const { uploadDrawing, uploading: uploadingToIPFS, error: ipfsError, progress: ipfsProgress } = useIPFSUpload()
+const ipfsResult = ref<any>(null)
+
+// NFT Minting
+const { mintNFT, minting: mintingNFT, mintError, mintedTokenId, txHash: mintTxHash } = useNFTMint()
+const runtimeConfig = useRuntimeConfig()
+const NFT_CONTRACT_ADDRESS = runtimeConfig.public.nftContractAddress
+
 // Contract state
 const onChainGameId = ref<number | null>(null)
 const wordSalt = ref<string>('')
@@ -258,6 +267,74 @@ function downloadDrawing() {
     a.click()
     document.body.removeChild(a)
   }, 'image/png', 0.95) // High quality PNG
+}
+
+// Upload drawing to IPFS
+async function handleUploadToIPFS() {
+  const canvas = canvasRef.value?.$el?.querySelector('canvas')
+  if (!canvas) {
+    console.error('[IPFS] Canvas not found')
+    return
+  }
+
+  try {
+    const winnerPeer = peers.value.find(p => p.id === gameState.value.winnerId)
+    
+    // Determine NFT recipient: winner if exists, otherwise artist
+    const nftRecipient = winnerPeer?.walletAddress || address.value
+    const recipientName = winnerPeer?.displayName || displayName.value
+    
+    console.log('[IPFS] NFT will go to:', {
+      recipient: nftRecipient,
+      name: recipientName,
+      reason: winnerPeer ? 'winner' : 'artist (no winner)'
+    })
+    
+    const result = await uploadDrawing(canvas, {
+      word: gameState.value.selectedWord || 'unknown',
+      artist: displayName.value || 'Anonymous',
+      artistAddress: address.value || '',
+      winner: gameState.value.winnerName || undefined,
+      winnerAddress: winnerPeer?.walletAddress || undefined,
+      gameId: onChainGameId.value || undefined,
+      difficulty: gameState.value.difficulty,
+      duration: gameState.value.duration
+    })
+
+    // Store result with suggested recipient for minting
+    ipfsResult.value = {
+      ...result,
+      suggestedRecipient: nftRecipient,
+      recipientName: recipientName,
+      recipientReason: winnerPeer ? 'Winner' : 'Artist (No Winner)'
+    }
+    
+    console.log('[IPFS] ✅ Upload successful:', result)
+    console.log('[IPFS] Suggested NFT recipient:', nftRecipient)
+  } catch (error) {
+    console.error('[IPFS] ❌ Upload failed:', error)
+  }
+}
+
+// Mint NFT after IPFS upload
+async function handleMintNFT() {
+  if (!ipfsResult.value || !NFT_CONTRACT_ADDRESS) {
+    console.error('[NFT] Missing IPFS result or contract address')
+    return
+  }
+
+  try {
+    const result = await mintNFT(
+      NFT_CONTRACT_ADDRESS,
+      ipfsResult.value.suggestedRecipient,
+      ipfsResult.value.metadataUri,
+      onChainGameId.value || undefined
+    )
+
+    console.log('[NFT] ✅ NFT minted successfully!', result)
+  } catch (error) {
+    console.error('[NFT] ❌ Minting failed:', error)
+  }
 }
 
 // Generate preview (not download) when game finishes
@@ -1786,9 +1863,126 @@ watch([address, isConnected], ([newAddress, newIsConnected]) => {
             </div>
           </div>
           
+          <!-- IPFS Upload Section -->
+          <div class="mt-4 space-y-2">
+            <UButton
+              @click="handleUploadToIPFS"
+              :loading="uploadingToIPFS"
+              :disabled="uploadingToIPFS || !!ipfsResult"
+              block
+              color="purple"
+              variant="soft"
+            >
+              <template v-if="uploadingToIPFS">
+                📦 Uploading to IPFS... {{ ipfsProgress }}%
+              </template>
+              <template v-else-if="ipfsResult">
+                ✅ Uploaded to IPFS
+              </template>
+              <template v-else>
+                📦 Upload to IPFS (for NFT)
+              </template>
+            </UButton>
+
+            <!-- IPFS Error -->
+            <div v-if="ipfsError" class="text-sm text-red-600 dark:text-red-400 px-2">
+              ❌ {{ ipfsError }}
+            </div>
+
+            <!-- IPFS Success - Show recipient and links -->
+            <div v-if="ipfsResult" class="space-y-2 px-2">
+              <!-- NFT Recipient Info -->
+              <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                <div class="flex items-start gap-2">
+                  <span class="text-lg">🎁</span>
+                  <div class="flex-1">
+                    <p class="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                      NFT Recipient: {{ ipfsResult.recipientName }}
+                    </p>
+                    <p class="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
+                      {{ ipfsResult.recipientReason }}
+                    </p>
+                    <p class="text-xs font-mono text-blue-600 dark:text-blue-400 mt-1">
+                      {{ ipfsResult.suggestedRecipient }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- IPFS Links -->
+              <div class="text-xs space-y-1">
+                <div class="flex items-start gap-2">
+                  <span class="font-semibold text-gray-700 dark:text-gray-300 shrink-0">Metadata:</span>
+                  <a 
+                    :href="ipfsResult.metadataUrl" 
+                    target="_blank" 
+                    class="text-blue-600 dark:text-blue-400 hover:underline break-all"
+                  >
+                    {{ ipfsResult.metadataUri }}
+                  </a>
+                </div>
+                <div class="flex items-start gap-2">
+                  <span class="font-semibold text-gray-700 dark:text-gray-300 shrink-0">Image:</span>
+                  <a 
+                    :href="ipfsResult.imageUrl" 
+                    target="_blank" 
+                    class="text-blue-600 dark:text-blue-400 hover:underline break-all"
+                  >
+                    {{ ipfsResult.imageUri }}
+                  </a>
+                </div>
+              </div>
+              
+              <!-- Mint NFT Button -->
+              <UButton
+                v-if="NFT_CONTRACT_ADDRESS && !mintedTokenId"
+                @click="handleMintNFT"
+                :loading="mintingNFT"
+                :disabled="mintingNFT"
+                block
+                color="green"
+                class="mt-2"
+              >
+                <template v-if="mintingNFT">
+                  🎨 Minting NFT...
+                </template>
+                <template v-else>
+                  🎨 Mint NFT
+                </template>
+              </UButton>
+              
+              <!-- Mint Success -->
+              <div v-if="mintedTokenId" class="mt-2 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded text-center">
+                <p class="text-sm font-semibold text-green-900 dark:text-green-100">
+                  ✅ NFT Minted! Token ID: {{ mintedTokenId.toString() }}
+                </p>
+                <a 
+                  v-if="mintTxHash"
+                  :href="`https://blockscout-passet-hub.parity-testnet.parity.io/tx/${mintTxHash}`"
+                  target="_blank"
+                  class="text-xs text-green-600 dark:text-green-400 hover:underline"
+                >
+                  View Transaction
+                </a>
+              </div>
+              
+              <!-- Mint Error -->
+              <div v-if="mintError" class="mt-2 text-sm text-red-600 dark:text-red-400">
+                ❌ {{ mintError }}
+              </div>
+              
+              <!-- Setup Warning -->
+              <div v-if="!NFT_CONTRACT_ADDRESS" class="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+                <p class="text-xs text-yellow-800 dark:text-yellow-200">
+                  ⚠️ NFT contract not configured. Deploy the Sk3tchyNFT contract and add the address to mint NFTs.
+                </p>
+              </div>
+            </div>
+          </div>
+          
           <div class="mt-3 md:mt-4 flex justify-center">
             <UButton
-              @click.stop="() => { console.log('Reset clicked'); resetGame(); clearContractState(); selectedWordLocal = null; showFinishModal = false }"
+              @click.stop="() => { console.log('Reset clicked'); resetGame(); clearContractState(); selectedWordLocal = null; showFinishModal = false; ipfsResult = null }"
               color="primary"
               size="lg"
             >

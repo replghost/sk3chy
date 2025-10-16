@@ -97,6 +97,95 @@
           </div>
         </template>
 
+        <!-- NFT Gallery Tab -->
+        <template #nfts>
+          <div class="space-y-4 py-6">
+            <div v-if="loadingNFTs" class="text-center py-12">
+              <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <p class="mt-4 text-gray-600 dark:text-gray-400">Loading NFTs...</p>
+            </div>
+
+            <div v-else-if="nfts.length === 0" class="text-center py-12">
+              <p class="text-gray-600 dark:text-gray-400">No NFTs minted yet.</p>
+              <p class="text-sm text-gray-500 mt-2">Play a game and mint your first drawing!</p>
+            </div>
+
+            <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div 
+                v-for="nft in nfts" 
+                :key="nft.tokenId"
+                class="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow"
+              >
+                <!-- NFT Image -->
+                <div class="aspect-square bg-gray-100 dark:bg-gray-900 relative">
+                  <img 
+                    v-if="nft.imageUrl"
+                    :src="nft.imageUrl" 
+                    :alt="nft.name"
+                    class="w-full h-full object-contain"
+                    @error="(e) => (e.target as HTMLImageElement).src = '/placeholder-nft.png'"
+                  />
+                  <div v-else class="w-full h-full flex items-center justify-center">
+                    <span class="text-4xl">🎨</span>
+                  </div>
+                  
+                  <!-- Token ID Badge -->
+                  <div class="absolute top-2 right-2">
+                    <UBadge color="primary" variant="solid">
+                      #{{ nft.tokenId }}
+                    </UBadge>
+                  </div>
+                </div>
+
+                <!-- NFT Info -->
+                <div class="p-4 space-y-3">
+                  <div>
+                    <h3 class="font-bold text-lg">{{ nft.name }}</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
+                      {{ nft.description }}
+                    </p>
+                  </div>
+
+                  <!-- Attributes -->
+                  <div v-if="nft.attributes && nft.attributes.length > 0" class="space-y-1">
+                    <div 
+                      v-for="attr in nft.attributes.slice(0, 3)" 
+                      :key="attr.trait_type"
+                      class="flex justify-between text-xs"
+                    >
+                      <span class="text-gray-500 dark:text-gray-400">{{ attr.trait_type }}:</span>
+                      <span class="font-medium">{{ attr.value }}</span>
+                    </div>
+                  </div>
+
+                  <!-- Owner -->
+                  <div class="pt-3 border-t border-gray-200 dark:border-gray-700">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Owner</p>
+                    <NuxtLink 
+                      :to="`/player/${nft.owner}`"
+                      class="text-sm font-medium hover:text-primary underline"
+                    >
+                      {{ formatAddress(nft.owner) }}
+                    </NuxtLink>
+                  </div>
+
+                  <!-- Actions -->
+                  <div class="flex gap-2">
+                    <UButton 
+                      size="xs" 
+                      variant="ghost"
+                      block
+                      @click="viewNFTOnExplorer(nft.tokenId)"
+                    >
+                      View on Explorer
+                    </UButton>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
         <!-- Leaderboard Tab -->
         <template #leaderboard>
           <div class="space-y-4 py-6">
@@ -188,17 +277,22 @@
 
 <script setup lang="ts">
 const { getRecentGames, getLeaderboard } = useGameContract()
+const { getAllNFTs } = useNFTGallery()
+const config = useRuntimeConfig()
 
 const selectedTab = ref(0)
 const tabs = [
   { label: 'Recent Games', slot: 'recent' },
-  { label: 'Leaderboard', slot: 'leaderboard' }
+  { label: 'Leaderboard', slot: 'leaderboard' },
+  { label: 'NFT Gallery', slot: 'nfts' }
 ]
 
 const recentGames = ref<any[]>([])
 const leaderboard = ref<any[]>([])
+const nfts = ref<any[]>([])
 const loadingGames = ref(true)
 const loadingLeaderboard = ref(true)
+const loadingNFTs = ref(true)
 
 onMounted(async () => {
   // Load recent games
@@ -210,6 +304,11 @@ onMounted(async () => {
   loadingLeaderboard.value = true
   leaderboard.value = await getLeaderboard()
   loadingLeaderboard.value = false
+
+  // Load NFTs
+  loadingNFTs.value = true
+  nfts.value = await getAllNFTs()
+  loadingNFTs.value = false
 })
 
 function formatAddress(address: string) {
@@ -235,6 +334,14 @@ function formatDate(timestamp: number) {
 function viewOnExplorer(txHash: string) {
   window.open(
     `https://blockscout-passet-hub.parity-testnet.parity.io/tx/${txHash}`,
+    '_blank'
+  )
+}
+
+function viewNFTOnExplorer(tokenId: number) {
+  const nftAddress = config.public.nftContractAddress
+  window.open(
+    `https://blockscout-passet-hub.parity-testnet.parity.io/token/${nftAddress}/instance/${tokenId}`,
     '_blank'
   )
 }

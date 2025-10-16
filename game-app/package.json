@@ -19,6 +19,7 @@
     "crypto-hash": "^4.0.0",
     "nanoid": "^5.1.6",
     "nuxt": "^3.11.2",
+    "pinata": "^2.5.1",
     "uuid": "^13.0.0",
     "viem": "latest",
     "vue": ">=3.4.21",
