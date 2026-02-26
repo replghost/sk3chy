@@ -50,7 +50,7 @@ export function useYPictionary(roomId: string) {
   // Check if current user can draw
   const canDraw = computed(() => isHost.value)
 
-  function start(roomOpts?: { signaling?: string[]; iceServers?: RTCIceServer[] }) {
+  function start(roomOpts?: { signaling?: string[]; iceServers?: RTCIceServer[]; [key: string]: any }) {
     yroom = $createYRoom(roomId, roomOpts)
     
     // Check if there's already a host

@@ -7,6 +7,7 @@ const props = defineProps<{
   brushColor: string,
   brushSize: number,
   canDraw?: boolean,         // optional: if false, disable drawing
+  fillContainer?: boolean,   // if true, fill parent instead of using aspect-ratio
   onPoint: (x:number, y:number) => void,
   onCommit: () => void,
   onCursor: (pos:{x:number;y:number}|null) => void,
@@ -168,7 +169,11 @@ watch(() => props.peers, renderAll, { deep: true })
 </script>
 
 <template>
-  <div class="relative w-full border rounded-md overflow-hidden touch-none bg-black" style="aspect-ratio: 16/9; max-height: 80vh;">
+  <div
+    class="relative w-full overflow-hidden touch-none bg-black"
+    :class="fillContainer ? 'h-full' : 'border rounded-md'"
+    :style="fillContainer ? undefined : 'aspect-ratio: 16/9; max-height: 80vh;'"
+  >
     <canvas ref="canvas"
       class="absolute inset-0 w-full h-full bg-black select-none"
       :class="{ 'cursor-not-allowed': !canDrawLocal, 'cursor-crosshair': canDrawLocal }"

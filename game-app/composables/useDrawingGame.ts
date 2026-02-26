@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid'
 import * as Y from 'yjs'
 import { sha256 } from 'crypto-hash'
 import { getRandomWords, type DifficultyLevel } from '~/utils/wordDictionary'
+import { useLogger } from '~/composables/useLogger'
 
 // Maximum number of players allowed in a game
 const MAX_PLAYERS = 8
@@ -30,6 +31,8 @@ type Guess = {
 type GameState = {
   status: 'waiting' | 'selecting' | 'playing' | 'finished'
   hostId: string | null
+  hostEpoch: number  // Monotonically increasing — prevents stale host claims
+  hostSetAt: number | null  // Timestamp of last host assignment — detects stale IDB
   selectedWord: string | null  // Only revealed at end
   wordCommitment: string | null  // Hash commitment
   wordSalt: string | null  // Revealed at end for verification
@@ -43,6 +46,7 @@ type GameState = {
   winnerName: string | null
   commitmentVerified: boolean | null  // Verification result
   onChainGameId: number | null  // Blockchain game ID (shared by host)
+  activePlayerIds: string[] | null  // Players who were in lobby when game started
 }
 
 // Generate a random bright color for each user
@@ -53,6 +57,7 @@ function generateUserColor(): string {
 
 export function useDrawingGame(roomId: string) {
   const { $createYRoom } = useNuxtApp() as any
+  const { addLog } = useLogger()
   const ready = ref(false)
   const userId = ref(`guest-${Math.random().toString(16).slice(2,8)}`)
   const displayName = ref('')
@@ -62,6 +67,8 @@ export function useDrawingGame(roomId: string) {
   const gameState = ref<GameState>({
     status: 'waiting',
     hostId: null,
+    hostEpoch: 0,
+    hostSetAt: null,
     selectedWord: null,
     wordCommitment: null,
     wordSalt: null,
@@ -74,22 +81,34 @@ export function useDrawingGame(roomId: string) {
     winnerId: null,
     winnerName: null,
     commitmentVerified: null,
-    onChainGameId: null
+    onChainGameId: null,
+    activePlayerIds: null
   })
   const timeRemaining = ref(0)
+  const electionInProgress = ref(false)
   let timerInterval: ReturnType<typeof setInterval> | null = null
+
+  // Progressive hints: array of letters (empty string = hidden)
+  const hintLetters = ref<string[]>([])
+  let lastHintCount = 0
 
   // Local state for commit-reveal (not synced to Yjs)
   let localSelectedWord: string | null = null
   let localSalt: string | null = null
   let isVerifying = false // Prevent verification loops
 
+  // Host departure detection
+  let hostLastSeenAt = Date.now()
+
   let yroom: any
   let pending: Point[] = []
+  let awarenessInterval: ReturnType<typeof setInterval> | null = null
 
   const strokes = ref<Stroke[]>([])
+  const lobbyStrokes = ref<Stroke[]>([])
   const peers = ref<any[]>([])
   const guesses = ref<Guess[]>([])
+  let lobbyPending: Point[] = []
 
   // Check if current user is the host
   const isHost = computed(() => gameState.value.hostId === userId.value)
@@ -106,64 +125,134 @@ export function useDrawingGame(roomId: string) {
     return isAlreadyIn || !isRoomFull.value
   })
 
-  async function start(roomOpts?: { signaling?: string[]; iceServers?: RTCIceServer[] }) {
-    yroom = $createYRoom(roomId, roomOpts)
-    
-    // Debug logging
-    console.log('[DrawingGame] Starting room:', roomId)
-    console.log('[DrawingGame] User ID:', userId.value)
-    
-    // Log provider connection status
-    yroom.provider.on('status', (event: any) => {
-      console.log('[DrawingGame] Provider status:', event.status || 'initializing')
+  // Spectator: joined after game started or room was full
+  const isSpectator = computed(() => {
+    const ids = gameState.value.activePlayerIds
+    if (!ids) return false // No game in progress or waiting state
+    const status = gameState.value.status
+    if (status === 'waiting') return false
+    return !ids.includes(userId.value)
+  })
+
+  // --- Election helpers ---
+
+  /** Read all election candidates from awareness for a given epoch */
+  function getCandidatesFromAwareness(epoch: number): Array<{ id: string; at: number }> {
+    const states = yroom.awareness.getStates()
+    const candidates: Array<{ id: string; at: number }> = []
+    states.forEach((state: any) => {
+      if (state.id && state.electionClaim && state.electionClaim.epoch === epoch) {
+        candidates.push({ id: state.id, at: state.electionClaim.at })
+      }
     })
-    
-    yroom.provider.on('peers', (event: any) => {
-      console.log('[DrawingGame] Connected peers:', event.webrtcPeers)
-      console.log('[DrawingGame] Total peers:', event.webrtcPeers.length)
-    })
-    
-    const ygame = yroom.game
-    
-    // Wait a bit for initial sync before claiming host
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    // Initialize or load game state
-    const existingHost = ygame.get('hostId')
-    if (!existingHost) {
-      // First user becomes host
-      console.log('[DrawingGame] No existing host, becoming host')
-      yroom.doc.transact(() => {
-        ygame.set('hostId', userId.value)
-        ygame.set('status', 'waiting')
-        ygame.set('difficulty', 'medium')
-        ygame.set('duration', 180)
-      })
-      gameState.value.hostId = userId.value
-    } else {
-      // Load existing game state
-      console.log('[DrawingGame] Found existing host:', existingHost)
-      syncGameState()
+    return candidates
+  }
+
+  /** Run an election for the given epoch. All peers who detect a vacancy call this. */
+  async function runElection(claimEpoch: number): Promise<{ elected: boolean; hostId: string }> {
+    electionInProgress.value = true
+    const candidateId = userId.value
+
+    // Broadcast candidacy via awareness (per-peer, can't be overwritten by others)
+    yroom.awareness.setLocalStateField('electionClaim', { epoch: claimEpoch, at: Date.now() })
+
+    // Wait for all candidates to broadcast
+    const DISPUTE_WINDOW_MS = 1200
+    await new Promise(resolve => setTimeout(resolve, DISPUTE_WINDOW_MS))
+
+    // Collect all candidates for this epoch from awareness
+    const allCandidates = getCandidatesFromAwareness(claimEpoch)
+
+    // If no candidates (shouldn't happen — we're one), fall back to self
+    if (allCandidates.length === 0) {
+      allCandidates.push({ id: candidateId, at: Date.now() })
     }
 
-    // Listen for game state changes
+    // Deterministic winner: lowest userId (lexicographic)
+    const winner = allCandidates.sort((a, b) => a.id.localeCompare(b.id))[0]
+
+    // Clear our election claim
+    yroom.awareness.setLocalStateField('electionClaim', null)
+
+    if (winner.id === candidateId) {
+      // We won — commit to Yjs
+      yroom.doc.transact(() => {
+        yroom.game.set('hostId', candidateId)
+        yroom.game.set('hostEpoch', claimEpoch)
+        yroom.game.set('hostSetAt', Date.now())
+        if (!yroom.game.get('status') || yroom.game.get('status') === 'finished') {
+          yroom.game.set('status', 'waiting')
+        }
+        yroom.game.set('difficulty', yroom.game.get('difficulty') ?? 'medium')
+        yroom.game.set('duration', yroom.game.get('duration') ?? 180)
+      })
+      addLog('Became room host', 'success')
+      console.log('[DrawingGame] Election won for epoch', claimEpoch)
+    } else {
+      addLog(`Joined room (host: ${winner.id.slice(0, 10)}...)`, 'info')
+      console.log('[DrawingGame] Election lost, host is', winner.id.slice(0, 10))
+    }
+
+    electionInProgress.value = false
+    syncGameState()
+    return { elected: winner.id === candidateId, hostId: winner.id }
+  }
+
+  async function start(roomOpts?: { signaling?: string[]; iceServers?: RTCIceServer[]; [key: string]: any }) {
+    yroom = $createYRoom(roomId, roomOpts)
+
+    addLog(`Joining room: ${roomId}`, 'info')
+    console.log('[DrawingGame] Starting room:', roomId, 'User:', userId.value)
+
+    const ygame = yroom.game
+
+    // Listen for game state changes (set up before sync so we catch everything)
     ygame.observe(() => {
       syncGameState()
     })
 
-    // awareness: set initial presence
+    // awareness: set initial presence (includes electionClaim field)
     yroom.awareness.setLocalState({
-      id: userId.value, 
+      id: userId.value,
       displayName: displayName.value,
-      color: brushColor.value, 
+      color: brushColor.value,
       cursor: null,
-      isHost: isHost.value
+      isHost: false,
+      electionClaim: null
     })
+
+    // Wait for initial Yjs sync before deciding on host
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    // Check for existing valid host
+    const existingHostId = ygame.get('hostId') as string | null
+    const hostSetAt = ygame.get('hostSetAt') as number | null
+    const hostEpoch = (ygame.get('hostEpoch') as number | null) ?? 0
+
+    // Detect stale IDB host entries (older than 5 minutes = likely a previous session)
+    const SESSION_STALENESS_MS = 5 * 60 * 1000
+    const isStale = !hostSetAt || (Date.now() - hostSetAt > SESSION_STALENESS_MS)
+
+    if (existingHostId && !isStale) {
+      console.log('[DrawingGame] Found existing host:', existingHostId)
+      addLog(`Joined room (host: ${existingHostId.slice(0, 10)}...)`, 'info')
+      syncGameState()
+    } else {
+      // No valid host — run election
+      console.log('[DrawingGame] No valid host, running election (stale:', isStale, ')')
+      await runElection(hostEpoch + 1)
+    }
 
     // react to remote changes
     const rebuild = () => { strokes.value = yroom.strokes.toArray() }
     yroom.strokes.observeDeep(rebuild)
     rebuild()
+
+    // lobby strokes (separate Y.Array for warm-up doodling)
+    const lobbyArray = yroom.doc.getArray('lobbyStrokes')
+    const rebuildLobby = () => { lobbyStrokes.value = lobbyArray.toArray() }
+    lobbyArray.observeDeep(rebuildLobby)
+    rebuildLobby()
 
     // react to guesses
     const guessArray = yroom.doc.getArray('guesses')
@@ -178,9 +267,10 @@ export function useDrawingGame(roomId: string) {
     rebuildGuesses()
 
     // awareness update
-    yroom.awareness.on('change', () => {
+    let lastPeerCount = 0
+    const updatePeers = () => {
       const states = yroom.awareness.getStates()
-      
+
       // Deduplicate peers by user ID (keep the most recent one based on clientID)
       const peerMap = new Map()
       states.forEach((peer: any, clientId: number) => {
@@ -192,40 +282,69 @@ export function useDrawingGame(roomId: string) {
           }
         }
       })
-      
-      peers.value = Array.from(peerMap.values())
-      console.log('[DrawingGame] Awareness changed. Peers:', peers.value.length, peers.value)
-      
+
+      const newPeers = Array.from(peerMap.values())
+      if (newPeers.length !== lastPeerCount) {
+        addLog(`Players: ${newPeers.length}`, 'info')
+        lastPeerCount = newPeers.length
+      }
+      peers.value = newPeers
+
       // Check if host is still connected
       checkHostPresence()
+    }
+    yroom.awareness.on('change', updatePeers)
+    // Also update when WebRTC peers connect/disconnect (awareness sync may lag)
+    yroom.provider.on('peers', () => {
+      setTimeout(updatePeers, 200)
     })
-
-    // Initial check after a delay (give time for peers to connect)
-    setTimeout(() => {
-      checkHostPresence()
-    }, 1000)
+    // Read initial states (we may have missed change events during the 500ms sync delay)
+    updatePeers()
+    // Periodic poll: catch any missed awareness updates (e.g. late-joining peers)
+    awarenessInterval = setInterval(updatePeers, 3000)
 
     ready.value = true
+    addLog('Room connected, ready to play', 'success')
   }
+
+  const HOST_DEPARTURE_MS = 12_000 // 12 seconds without awareness heartbeat
+  let electionTriggered = false
 
   function checkHostPresence() {
     const currentHostId = gameState.value.hostId
-    if (!currentHostId) return
-    
-    // Check if the current host is in the peers list
-    const hostPresent = peers.value.some(peer => peer.id === currentHostId)
-    
-    if (!hostPresent && peers.value.length > 0) {
-      // Host disconnected - make the first connected peer the new host
-      console.log('Host disconnected, assigning new host')
-      const newHostId = peers.value[0].id
-      
-      // Only update if we're the first peer (to avoid race conditions)
-      if (newHostId === userId.value) {
-        yroom.game.set('hostId', userId.value)
-        console.log('Became new host')
-      }
+    if (!currentHostId || currentHostId === userId.value) {
+      hostLastSeenAt = Date.now()
+      return
     }
+
+    // Check raw awareness for host presence
+    const states = yroom.awareness.getStates()
+    let hostFound = false
+    states.forEach((state: any) => {
+      if (state.id === currentHostId) hostFound = true
+    })
+
+    if (hostFound) {
+      hostLastSeenAt = Date.now()
+      electionTriggered = false
+      return
+    }
+
+    // Host not in awareness — check how long they've been gone
+    const silenceDuration = Date.now() - hostLastSeenAt
+    if (silenceDuration < HOST_DEPARTURE_MS) return
+    if (electionTriggered) return // Already running election for this departure
+
+    // Host confirmed gone — trigger election
+    electionTriggered = true
+    addLog('Host disconnected, electing new host...', 'warning')
+    const currentEpoch = (yroom.game.get('hostEpoch') as number | null) ?? 0
+    runElection(currentEpoch + 1).then(result => {
+      electionTriggered = false
+      if (result.elected) {
+        addLog('You are the new host', 'success')
+      }
+    })
   }
 
   function syncGameState() {
@@ -233,6 +352,8 @@ export function useDrawingGame(roomId: string) {
     gameState.value = {
       status: ygame.get('status') || 'waiting',
       hostId: ygame.get('hostId') || null,
+      hostEpoch: ygame.get('hostEpoch') ?? 0,
+      hostSetAt: ygame.get('hostSetAt') || null,
       selectedWord: ygame.get('selectedWord') || null,
       wordCommitment: ygame.get('wordCommitment') || null,
       wordSalt: ygame.get('wordSalt') || null,
@@ -245,8 +366,12 @@ export function useDrawingGame(roomId: string) {
       winnerId: ygame.get('winnerId') || null,
       winnerName: ygame.get('winnerName') || null,
       commitmentVerified: ygame.get('commitmentVerified') || null,
-      onChainGameId: ygame.get('onChainGameId') || null
+      onChainGameId: ygame.get('onChainGameId') || null,
+      activePlayerIds: ygame.get('activePlayerIds') || null
     }
+
+    // Sync hint letters from Yjs
+    hintLetters.value = ygame.get('hintLetters') || []
 
     // Verify commitment when word is revealed (async, non-blocking)
     if (gameState.value.status === 'finished' && gameState.value.selectedWord && gameState.value.wordSalt && !isVerifying) {
@@ -290,33 +415,71 @@ export function useDrawingGame(roomId: string) {
     yroom.game.set('selectedWord', null) // Don't reveal the word yet
     
     console.log('Word selected:', word, 'Commitment:', commitment.substring(0, 10) + '...')
+    addLog(`Word selected, commitment: ${commitment.substring(0, 10)}...`, 'info')
   }
 
   function startGame() {
     if (!isHost.value || !localSelectedWord || !gameState.value.wordCommitment) return
+    addLog(`Game started (${gameState.value.duration}s, ${gameState.value.difficulty})`, 'success')
+    // Snapshot current players as active participants
+    const playerIds = peers.value.map(p => p.id)
     yroom.doc.transact(() => {
       yroom.game.set('status', 'playing')
       yroom.game.set('startTime', Date.now())
-      // Clear previous game data
+      yroom.game.set('activePlayerIds', playerIds)
+      // Clear previous game data + lobby doodles
       yroom.strokes.delete(0, yroom.strokes.length)
       const guessArray = yroom.doc.getArray('guesses')
       guessArray.delete(0, guessArray.length)
+      const lobbyArray = yroom.doc.getArray('lobbyStrokes')
+      lobbyArray.delete(0, lobbyArray.length)
     })
+  }
+
+  function updateHints() {
+    if (!isHost.value || !localSelectedWord || !gameState.value.startTime) return
+    const elapsed = Math.floor((Date.now() - gameState.value.startTime) / 1000)
+    const hintsToShow = Math.floor(elapsed / 30)
+    const wordLen = localSelectedWord.length
+
+    if (hintsToShow > lastHintCount && lastHintCount < wordLen - 1) {
+      // Deterministic shuffle based on commitment
+      const seed = gameState.value.wordCommitment || ''
+      const indices: number[] = []
+      for (let i = 0; i < wordLen; i++) indices.push(i)
+      for (let i = indices.length - 1; i > 0; i--) {
+        const charCode = seed.charCodeAt(i % seed.length) || 0
+        const j = charCode % (i + 1)
+        ;[indices[i], indices[j]] = [indices[j], indices[i]]
+      }
+      const maxHints = Math.min(hintsToShow, wordLen - 1)
+      lastHintCount = maxHints
+
+      // Build hint array and broadcast via Yjs
+      const hints: string[] = Array(wordLen).fill('')
+      for (let i = 0; i < maxHints; i++) {
+        hints[indices[i]] = localSelectedWord[indices[i]].toLowerCase()
+      }
+      yroom.game.set('hintLetters', hints)
+    }
   }
 
   function startTimer() {
     if (timerInterval) clearInterval(timerInterval)
-    
+    lastHintCount = 0
+
     timerInterval = setInterval(() => {
       if (!gameState.value.startTime) return
-      
+
       const elapsed = Math.floor((Date.now() - gameState.value.startTime) / 1000)
       const remaining = gameState.value.duration - elapsed
-      
+
       timeRemaining.value = Math.max(0, remaining)
-      
+      updateHints()
+
       if (remaining <= 0) {
         console.log('[DrawingGame] Time expired! Ending game. isHost:', isHost.value)
+        addLog('Time expired — no winner', 'warning')
         endGame(null, null)
       }
     }, 100)
@@ -342,6 +505,7 @@ export function useDrawingGame(roomId: string) {
       if (guessHash === gameState.value.wordCommitment) {
         // Found the winner!
         console.log('WINNER FOUND:', guess.displayName)
+        addLog(`Winner: ${guess.displayName} guessed correctly!`, 'success')
         endGame(guess.by, guess.displayName)
         return
       }
@@ -388,22 +552,27 @@ export function useDrawingGame(roomId: string) {
     }
     
     gameState.value.commitmentVerified = verified
+    addLog(`Commitment verification: ${verified ? 'passed' : 'FAILED'}`, verified ? 'success' : 'error')
   }
 
-  function resetGame() {
+  async function requestNewGame(): Promise<void> {
     if (timerInterval) {
       clearInterval(timerInterval)
       timerInterval = null
     }
-    
+
     // Clear local state
     localSelectedWord = null
     localSalt = null
-    
+    isVerifying = false
+
+    const currentEpoch = (yroom.game.get('hostEpoch') as number | null) ?? 0
+
+    // Reset game data but do NOT set hostId — let election decide
     yroom.doc.transact(() => {
-      // Make the person who clicks "New Game" the new host
-      yroom.game.set('hostId', userId.value)
       yroom.game.set('status', 'waiting')
+      yroom.game.set('hostId', null)
+      yroom.game.set('hostSetAt', null)
       yroom.game.set('selectedWord', null)
       yroom.game.set('wordCommitment', null)
       yroom.game.set('wordSalt', null)
@@ -414,10 +583,15 @@ export function useDrawingGame(roomId: string) {
       yroom.game.set('winnerId', null)
       yroom.game.set('winnerName', null)
       yroom.game.set('commitmentVerified', null)
+      yroom.game.set('hintLetters', null)
+      yroom.game.set('activePlayerIds', null)
       yroom.strokes.delete(0, yroom.strokes.length)
       const guessArray = yroom.doc.getArray('guesses')
       guessArray.delete(0, guessArray.length)
     })
+
+    // Run election — all peers who click "Play Again" participate
+    await runElection(currentEpoch + 1)
   }
 
   function addPoint(x: number, y: number) {
@@ -457,7 +631,7 @@ export function useDrawingGame(roomId: string) {
   }
 
   function sendGuess(text: string) {
-    if (!text.trim() || gameState.value.status !== 'playing') return
+    if (!text.trim() || gameState.value.status !== 'playing' || isSpectator.value) return
     const guess: Guess = {
       id: nanoid(),
       by: userId.value,
@@ -469,6 +643,44 @@ export function useDrawingGame(roomId: string) {
       const guessArray = yroom.doc.getArray('guesses')
       guessArray.push([guess])
     })
+  }
+
+  function addLobbyPoint(x: number, y: number) {
+    lobbyPending.push({ x, y, t: performance.now() })
+  }
+
+  function commitLobbyStroke() {
+    if (!lobbyPending.length) return
+    const stroke: Stroke = {
+      id: nanoid(),
+      by: userId.value,
+      color: brushColor.value,
+      size: brushSize.value,
+      points: lobbyPending.slice(),
+      at: Date.now()
+    }
+    lobbyPending = []
+    yroom.doc.transact(() => {
+      const lobbyArray = yroom.doc.getArray('lobbyStrokes')
+      lobbyArray.push([stroke])
+    })
+  }
+
+  function clearLobbyStrokes() {
+    yroom.doc.transact(() => {
+      const lobbyArray = yroom.doc.getArray('lobbyStrokes')
+      lobbyArray.delete(0, lobbyArray.length)
+    })
+  }
+
+  function undoStroke() {
+    if (!canDraw.value) return
+    const len = yroom.strokes.length
+    if (len > 0) {
+      yroom.doc.transact(() => {
+        yroom.strokes.delete(len - 1, 1)
+      })
+    }
   }
 
   function clearCanvas() {
@@ -493,6 +705,10 @@ export function useDrawingGame(roomId: string) {
       clearInterval(timerInterval)
       timerInterval = null
     }
+    if (awarenessInterval) {
+      clearInterval(awarenessInterval)
+      awarenessInterval = null
+    }
     try {
       yroom?.provider?.destroy()
       yroom?.doc?.destroy()
@@ -503,13 +719,15 @@ export function useDrawingGame(roomId: string) {
 
   return {
     // state
-    ready, strokes, peers, guesses, brushColor, brushSize, userId, displayName,
-    isHost, canDraw, gameState, timeRemaining, isRoomFull, canJoin,
+    ready, strokes, lobbyStrokes, peers, guesses, brushColor, brushSize, userId, displayName,
+    isHost, canDraw, gameState, timeRemaining, isRoomFull, canJoin, isSpectator, hintLetters,
+    electionInProgress,
     // constants
     maxPlayers: MAX_PLAYERS,
     // api
-    start, addPoint, commitStroke, setCursor, setDisplayName, setWalletAddress, sendGuess, clearCanvas,
-    generateWordOptions, selectWord, startGame, resetGame, setDifficulty, setDuration,
+    start, addPoint, commitStroke, setCursor, setDisplayName, setWalletAddress, sendGuess,
+    undoStroke, clearCanvas, addLobbyPoint, commitLobbyStroke, clearLobbyStrokes,
+    generateWordOptions, selectWord, startGame, requestNewGame, resetGame: requestNewGame, setDifficulty, setDuration,
     // yroom access for SIWE
     getYRoom: () => yroom
   }

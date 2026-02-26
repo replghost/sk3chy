@@ -4,18 +4,16 @@ import { useSubstrateAuth, type SubstrateAuthData } from '~/composables/useSubst
 import { useSubstrateWallet } from '~/composables/useSubstrateWallet'
 import { useReviveMapAccount } from '~/composables/useReviveMapAccount'
 
-// Create a simple Yjs room for testing
 const roomId = 'substrate-auth-test-room'
 let yroom: any = null
 let substrateAuth: ReturnType<typeof useSubstrateAuth> | null = null
 
 const { extensions, accounts, activeAccount, status, error: walletError, refreshExtensions, connect, disconnect, setActiveAccount } = useSubstrateWallet()
-const { status: mapStatus, error: mapError, lastTxHash, mapAccount } = useReviveMapAccount()
+const { status: mapStatus, error: mapError, lastTxHash, mapNote, unmapStatus, unmapError, lastUnmapTxHash, mapAccount, unmapAccount } = useReviveMapAccount()
 
 const isSigningIn = ref(false)
 const isSigned = ref(false)
 const error = ref<string | null>(null)
-const signInMessage = ref<string | null>(null)
 const verifiedUsers = ref<Map<string, SubstrateAuthData>>(new Map())
 const peerStates = ref<any[]>([])
 
@@ -26,14 +24,8 @@ const shortAddress = computed(() => {
   return `${address.value.slice(0, 6)}...${address.value.slice(-4)}`
 })
 
-const accountOptions = computed(() => accounts.value.map((acct) => ({
-  label: `${acct.name ?? 'Account'} (${acct.address.slice(0, 6)}...${acct.address.slice(-4)})`,
-  value: acct.address
-})))
-
 const substrateAccounts = computed(() => accounts.value.filter((acct) => !/^0x[0-9a-fA-F]{40}$/.test(acct.address)))
 const hasOnlyEvmAccounts = computed(() => accounts.value.length > 0 && substrateAccounts.value.length === 0)
-
 const substrateAccountOptions = computed(() => substrateAccounts.value.map((acct) => ({
   label: `${acct.name ?? 'Account'} (${acct.address.slice(0, 6)}...${acct.address.slice(-4)})`,
   value: acct.address
@@ -73,7 +65,6 @@ onMounted(async () => {
   ]
 
   if (config.public.turnUsername && config.public.turnCredential) {
-    console.log('[SubstrateAuth Test] TURN server configured')
     iceServers.push({
       urls: [
         'turn:a.relay.metered.ca:443',
@@ -82,8 +73,6 @@ onMounted(async () => {
       username: config.public.turnUsername,
       credential: config.public.turnCredential
     })
-  } else {
-    console.log('[SubstrateAuth Test] Using STUN-only (no TURN servers)')
   }
 
   yroom = $createYRoom(roomId, { iceServers })
@@ -97,8 +86,6 @@ onMounted(async () => {
     const states = yroom.awareness.getStates()
     peerStates.value = Array.from(states.values())
   })
-
-  console.log('[SubstrateAuth Test] Room initialized:', roomId)
 })
 
 watch([isConnected, address], ([connected, addr], [wasConnected, prevAddr]) => {
@@ -113,12 +100,6 @@ watch([isConnected, address], ([connected, addr], [wasConnected, prevAddr]) => {
   if (!connected && wasConnected && prevAddr) {
     substrateAuth?.clearSignature(prevAddr)
     isSigned.value = false
-    signInMessage.value = null
-    console.log('[SubstrateAuth Test] Cleared signature on disconnect')
-  }
-
-  if (connected && addr && substrateAuth) {
-    signInMessage.value = substrateAuth.prepareSignInMessage(addr)
   }
 }, { immediate: true })
 
@@ -137,11 +118,7 @@ async function handleSignIn() {
   error.value = null
 
   try {
-    if (substrateAuth && activeAccount.value && !signInMessage.value) {
-      signInMessage.value = substrateAuth.prepareSignInMessage(activeAccount.value.address)
-    }
-    const result = await substrateAuth.signIn(activeAccount.value)
-    console.log('[SubstrateAuth Test] Signed in:', result)
+    await substrateAuth.signIn(activeAccount.value)
     isSigned.value = true
 
     yroom.awareness.setLocalState({
@@ -151,7 +128,6 @@ async function handleSignIn() {
       walletConnected: true
     })
   } catch (err: any) {
-    console.error('[SubstrateAuth Test] Sign in error:', err)
     error.value = err.message || 'Failed to sign in'
   } finally {
     isSigningIn.value = false
@@ -167,19 +143,23 @@ async function handleMapAccount() {
   }
 }
 
+async function handleUnmapAccount() {
+  error.value = null
+  try {
+    await unmapAccount()
+  } catch (err: any) {
+    error.value = err.message || 'Failed to unmap account'
+  }
+}
+
 async function handleVerifyPeer(peerAddress: string) {
   if (!substrateAuth) return
 
   const userData = verifiedUsers.value.get(peerAddress)
-  if (!userData) {
-    console.warn('[SubstrateAuth Test] No data for peer:', peerAddress)
-    return
-  }
+  if (!userData) return
 
   const isValid = await substrateAuth.verifyPeer(userData)
   const isActive = await substrateAuth.isUserActive(peerAddress, yroom.awareness.getStates())
-
-  console.log('[SubstrateAuth Test] Peer verification:', { peerAddress, isValid, isActive })
 
   let statusText = ''
   if (isValid && isActive) {
@@ -193,9 +173,7 @@ async function handleVerifyPeer(peerAddress: string) {
   alert(`Peer ${peerAddress.slice(0, 6)}...${peerAddress.slice(-4)}\n${statusText}`)
 }
 
-const connectedPeers = computed(() => {
-  return peerStates.value.filter(p => p.address)
-})
+const connectedPeers = computed(() => peerStates.value.filter(p => p.address))
 
 function getPeerStatus(peer: any) {
   if (peer.walletConnected && peer.signedIn) {
@@ -213,18 +191,16 @@ function getPeerStatus(peer: any) {
   <div class="min-h-screen bg-neutral-50 dark:bg-neutral-900 py-8">
     <UContainer>
       <div class="max-w-4xl mx-auto space-y-6">
-        <!-- Header -->
         <div class="text-center mb-8">
-          <h1 class="text-4xl font-bold mb-2">🔐 Substrate Sign-In Test Page</h1>
+          <h1 class="text-4xl font-bold mb-2">🧪 Substrate Test Page</h1>
           <p class="text-neutral-600 dark:text-neutral-400">
-            Test Substrate-native sign-in in a P2P environment (Paseo Asset Hub)
+            DOTConnect + map_account + Substrate sign-in
           </p>
           <p class="text-sm text-neutral-500 mt-2">
             Room: <code class="bg-neutral-200 dark:bg-neutral-800 px-2 py-1 rounded">{{ roomId }}</code>
           </p>
         </div>
 
-        <!-- Wallet Connection -->
         <UCard>
           <template #header>
             <h2 class="text-xl font-semibold">1. Connect Wallet</h2>
@@ -241,7 +217,7 @@ function getPeerStatus(peer: any) {
               </UButton>
             </div>
             <p class="text-xs text-neutral-500">
-              The DOTConnect button opens the wallet dialog. Click “Load Accounts” (or a wallet below) to sync accounts into this demo.
+              Use the DOTConnect button to authorize, then “Load Accounts” to sync.
             </p>
 
             <div v-if="!isConnected" class="space-y-3">
@@ -268,6 +244,7 @@ function getPeerStatus(peer: any) {
                 <div>
                   <p class="text-sm text-neutral-600 dark:text-neutral-400">Connected as:</p>
                   <p class="font-mono text-lg">{{ shortAddress }}</p>
+                  <p class="text-xs text-neutral-500">{{ address }}</p>
                 </div>
                 <UButton @click="() => disconnect()" color="red" variant="soft">
                   Disconnect
@@ -290,7 +267,6 @@ function getPeerStatus(peer: any) {
           </div>
         </UCard>
 
-        <!-- Map Address -->
         <UCard>
           <template #header>
             <h2 class="text-xl font-semibold">2. Map Address (pallet-revive)</h2>
@@ -298,37 +274,56 @@ function getPeerStatus(peer: any) {
 
           <div class="space-y-4">
             <p class="text-sm text-neutral-600 dark:text-neutral-400">
-              Map your Substrate account to an H160 address so it can interact with revive contracts.
+              Map your Substrate account to an H160 address for revive contracts (required before calling Solidity contracts or you’ll hit <code>OriginMustBeMapped</code>).
             </p>
 
             <UButton
               @click="handleMapAccount"
               :loading="mapStatus === 'mapping'"
-              :disabled="!isConnected"
+              :disabled="!isConnected || mapStatus === 'mapped'"
               color="primary"
               size="lg"
               block
             >
-              {{ isConnected ? 'Map Account' : 'Connect Wallet First' }}
+              {{ mapStatus === 'mapped' ? 'Account Mapped ✓' : (isConnected ? 'Map Account' : 'Connect Wallet First') }}
             </UButton>
 
             <div v-if="mapStatus === 'mapped'" class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
               <div class="flex items-center gap-2 text-green-700 dark:text-green-400">
                 <span class="text-2xl">✓</span>
                 <div>
-                  <p class="font-semibold">Account mapped</p>
+                  <p class="font-semibold">{{ mapNote || 'Account mapped' }}</p>
                   <p v-if="lastTxHash" class="text-sm font-mono">Tx: {{ lastTxHash }}</p>
                 </div>
               </div>
             </div>
 
+            <UButton
+              v-if="mapStatus === 'mapped'"
+              @click="handleUnmapAccount"
+              :loading="unmapStatus === 'unmapping'"
+              color="red"
+              variant="soft"
+              size="sm"
+              block
+            >
+              Unmap Account
+            </UButton>
+
+            <div v-if="unmapStatus === 'unmapped'" class="bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg p-3 text-sm text-neutral-700 dark:text-neutral-300">
+              Account unmapped.
+              <span v-if="lastUnmapTxHash" class="font-mono">Tx: {{ lastUnmapTxHash }}</span>
+            </div>
+
             <p v-if="mapError" class="text-sm text-red-600 dark:text-red-400">
               {{ mapError }}
+            </p>
+            <p v-if="unmapError" class="text-sm text-red-600 dark:text-red-400">
+              {{ unmapError }}
             </p>
           </div>
         </UCard>
 
-        <!-- Substrate Sign In -->
         <UCard>
           <template #header>
             <h2 class="text-xl font-semibold">3. Sign In (Substrate)</h2>
@@ -336,16 +331,8 @@ function getPeerStatus(peer: any) {
 
           <div class="space-y-4">
             <p class="text-sm text-neutral-600 dark:text-neutral-400">
-              Sign a message to prove ownership of your Substrate address. This stores the signature in the P2P Yjs document.
+              Sign a message to prove ownership of your Substrate address.
             </p>
-
-            <div
-              v-if="signInMessage"
-              class="rounded border border-blue-200 bg-white p-3 text-xs text-blue-800 dark:border-blue-800 dark:bg-neutral-900 dark:text-blue-200"
-            >
-              <div class="text-[11px] font-semibold">Message to sign</div>
-              <pre class="mt-2 whitespace-pre-wrap font-mono text-[10px] leading-relaxed">{{ signInMessage }}</pre>
-            </div>
 
             <div v-if="!isSigned">
               <UButton
@@ -376,7 +363,6 @@ function getPeerStatus(peer: any) {
           </div>
         </UCard>
 
-        <!-- Verified Users in Room -->
         <UCard>
           <template #header>
             <div class="flex items-center justify-between">
@@ -389,7 +375,7 @@ function getPeerStatus(peer: any) {
 
           <div class="space-y-3">
             <p class="text-sm text-neutral-600 dark:text-neutral-400">
-              These users have signed in and their signatures are stored in the shared Yjs document. Click "Verify" to check their signature.
+              These users have signed in and their signatures are stored in the shared Yjs document.
             </p>
 
             <div v-if="verifiedUsers.size === 0" class="text-center py-8 text-neutral-400">
@@ -427,7 +413,6 @@ function getPeerStatus(peer: any) {
           </div>
         </UCard>
 
-        <!-- Connected Peers (Awareness) -->
         <UCard>
           <template #header>
             <div class="flex items-center justify-between">
@@ -440,7 +425,7 @@ function getPeerStatus(peer: any) {
 
           <div class="space-y-3">
             <p class="text-sm text-neutral-600 dark:text-neutral-400">
-              These peers are connected via WebRTC and have awareness state. Open this page in multiple browsers/tabs to test.
+              Open this page in multiple browsers/tabs to test awareness.
             </p>
 
             <div v-if="connectedPeers.length === 0" class="text-center py-8 text-neutral-400">
@@ -466,32 +451,6 @@ function getPeerStatus(peer: any) {
                   </p>
                 </div>
               </div>
-            </div>
-          </div>
-        </UCard>
-
-        <!-- Debug Info -->
-        <UCard>
-          <template #header>
-            <h2 class="text-xl font-semibold">Debug Info</h2>
-          </template>
-
-          <div class="space-y-2 text-xs font-mono">
-            <div class="grid grid-cols-2 gap-2">
-              <div class="text-neutral-500">Wallet Connected:</div>
-              <div>{{ isConnected ? '✓' : '✗' }}</div>
-
-              <div class="text-neutral-500">Mapped (revive):</div>
-              <div>{{ mapStatus === 'mapped' ? '✓' : '✗' }}</div>
-
-              <div class="text-neutral-500">Signed In:</div>
-              <div>{{ isSigned ? '✓' : '✗' }}</div>
-
-              <div class="text-neutral-500">Verified Users:</div>
-              <div>{{ verifiedUsers.size }}</div>
-
-              <div class="text-neutral-500">Connected Peers:</div>
-              <div>{{ connectedPeers.length }}</div>
             </div>
           </div>
         </UCard>

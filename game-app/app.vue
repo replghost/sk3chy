@@ -1,14 +1,30 @@
 <template>
   <div class="min-h-screen flex flex-col">
     <AppHeader />
-    
+
     <main class="flex-1">
       <NuxtPage />
     </main>
-    
+
     <AppFooter />
+
+    <OnboardingModal v-model="showOnboarding" />
   </div>
 </template>
+
+<script setup lang="ts">
+import { useBrowserKeys } from '~/composables/useBrowserKeys'
+
+const keys = useBrowserKeys()
+const showOnboarding = useState('showOnboarding', () => false)
+
+onMounted(() => {
+  keys.init()
+  if (!keys.username.value) {
+    showOnboarding.value = true
+  }
+})
+</script>
 
 <style>
 :root {

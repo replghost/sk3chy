@@ -105,3 +105,19 @@ For production, use WSS:
 ```
 NUXT_PUBLIC_SIGNALING_SERVER=wss://your-signaling-server.com
 ```
+
+## Statement Store Signaling (No Server)
+
+1. Start the game app:
+```
+cd game-app
+bun run dev
+```
+2. Visit http://localhost:3000/test-ss-signaling
+3. Connect a Substrate wallet and join the same room in another tab
+
+Optional override in `game-app/.env`:
+```
+NUXT_PUBLIC_STATEMENT_STORE_WS=wss://pop-testnet.parity-lab.parity.io:443/9910
+NUXT_PUBLIC_STATEMENT_STORE_SIGNING=ephemeral
+```

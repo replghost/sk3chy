@@ -1,0 +1,1119 @@
+<script setup lang="ts">
+import { useRoute } from 'vue-router'
+import { ref, onMounted, watch, computed } from 'vue'
+import { useRuntimeConfig } from '#app'
+import confetti from 'canvas-confetti'
+import YCanvas from '~/components/YCanvas.vue'
+import { useDrawingGame } from '~/composables/useDrawingGame'
+import { useBrowserKeys } from '~/composables/useBrowserKeys'
+import { useLogger } from '~/composables/useLogger'
+import { getAllDifficulties, type DifficultyLevel } from '~/utils/wordDictionary'
+
+const config = useRuntimeConfig()
+const route = useRoute()
+const roomId = `play-${String(route.params.id)}`
+const keys = useBrowserKeys()
+const { addLog } = useLogger()
+
+const {
+  ready, strokes, lobbyStrokes, peers, guesses, brushColor, brushSize, userId, displayName,
+  isHost, canDraw, gameState, timeRemaining, isRoomFull, canJoin, isSpectator, hintLetters,
+  maxPlayers, electionInProgress,
+  start, addPoint, commitStroke, setCursor, setDisplayName, sendGuess,
+  undoStroke, clearCanvas, addLobbyPoint, commitLobbyStroke, clearLobbyStrokes,
+  generateWordOptions, selectWord, startGame, requestNewGame, setDifficulty, setDuration
+} = useDrawingGame(roomId)
+
+// Split peers into active players and spectators
+const activePlayers = computed(() => {
+  const ids = gameState.value.activePlayerIds
+  if (!ids) return peers.value // No game in progress — everyone is a player
+  return peers.value.filter(p => ids.includes(p.id))
+})
+const spectators = computed(() => {
+  const ids = gameState.value.activePlayerIds
+  if (!ids) return []
+  return peers.value.filter(p => !ids.includes(p.id))
+})
+
+const eraserActive = ref(false)
+const savedColor = ref('#FFFFFF')
+
+function toggleEraser() {
+  if (eraserActive.value) {
+    eraserActive.value = false
+    brushColor.value = savedColor.value
+  } else {
+    eraserActive.value = true
+    savedColor.value = brushColor.value
+    brushColor.value = '#000000'
+  }
+}
+
+function selectColor(color: string) {
+  eraserActive.value = false
+  brushColor.value = color
+}
+
+const guessInput = ref('')
+const guessesContainer = ref<HTMLElement | null>(null)
+const selectedWordLocal = ref<string | null>(null)
+const playersExpanded = ref(false)
+const canvasRef = ref<any>(null)
+const exportedImageUrl = ref<string | null>(null)
+const showFinishModal = ref(false)
+const linkCopied = ref(false)
+const lobbyPlayersOpen = ref(false)
+
+async function handleNewGame() {
+  selectedWordLocal.value = null
+  showFinishModal.value = false
+  await requestNewGame()
+}
+
+function copyInviteLink() {
+  navigator.clipboard.writeText(window.location.href)
+  linkCopied.value = true
+  setTimeout(() => { linkCopied.value = false }, 2000)
+}
+
+// Vibrant colors that pop on black background
+const drawingColors = [
+  '#FFFFFF', // White
+  '#FF006E', // Hot Pink
+  '#00F5FF', // Cyan
+  '#FFBE0B', // Yellow
+  '#FB5607', // Orange
+  '#8338EC', // Purple
+  '#3A86FF', // Blue
+  '#06FFA5', // Mint Green
+]
+
+const difficulties = getAllDifficulties()
+
+const handleSendGuess = () => {
+  if (guessInput.value.trim()) {
+    sendGuess(guessInput.value)
+    guessInput.value = ''
+    setTimeout(() => {
+      if (guessesContainer.value) {
+        guessesContainer.value.scrollTop = guessesContainer.value.scrollHeight
+      }
+    }, 50)
+  }
+}
+
+// Auto-scroll when new guesses arrive
+watch(guesses, () => {
+  setTimeout(() => {
+    if (guessesContainer.value) {
+      guessesContainer.value.scrollTop = guessesContainer.value.scrollHeight
+    }
+  }, 50)
+}, { deep: true })
+
+// Format time as MM:SS
+const formattedTime = computed(() => {
+  const minutes = Math.floor(timeRemaining.value / 60)
+  const seconds = timeRemaining.value % 60
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+})
+
+// Show countdown warning in last 10 seconds
+const showCountdownWarning = computed(() => timeRemaining.value <= 10 && timeRemaining.value > 0)
+
+// Calculate actual game duration (from start to end)
+const actualDuration = computed(() => {
+  if (!gameState.value.startTime || !gameState.value.endTime) return 0
+  return Math.floor((gameState.value.endTime - gameState.value.startTime) / 1000)
+})
+
+const formattedActualDuration = computed(() => {
+  const minutes = Math.floor(actualDuration.value / 60)
+  const seconds = actualDuration.value % 60
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+})
+
+// Sync display name changes back to localStorage
+watch(displayName, (name) => {
+  if (name && keys.initialized.value) {
+    keys.setUsername(name)
+  }
+})
+
+// Download drawing as PNG
+function downloadDrawing() {
+  const canvas = canvasRef.value?.$el?.querySelector('canvas')
+  if (!canvas) return
+
+  // Use fixed dimensions for consistent output across devices
+  const fixedWidth = 1200
+  const fixedHeight = 900
+  const scale = 2 // For high-res text
+
+  const exportCanvas = document.createElement('canvas')
+  exportCanvas.width = fixedWidth * scale
+  exportCanvas.height = fixedHeight * scale
+  const ctx = exportCanvas.getContext('2d')
+  if (!ctx) return
+
+  // Enable high-quality rendering
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+
+  // Draw the original canvas scaled to fit
+  const aspectRatio = canvas.width / canvas.height
+  const targetAspectRatio = fixedWidth / fixedHeight
+
+  let drawWidth = fixedWidth * scale
+  let drawHeight = fixedHeight * scale
+  let offsetX = 0
+  let offsetY = 0
+
+  if (aspectRatio > targetAspectRatio) {
+    drawHeight = (fixedWidth / aspectRatio) * scale
+    offsetY = (fixedHeight * scale - drawHeight) / 2
+  } else {
+    drawWidth = (fixedHeight * aspectRatio) * scale
+    offsetX = (fixedWidth * scale - drawWidth) / 2
+  }
+
+  ctx.fillStyle = '#000000'
+  ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
+  ctx.drawImage(canvas, offsetX, offsetY, drawWidth, drawHeight)
+
+  // Draw guesses on the right side (wider area for less wrapping)
+  const guessX = exportCanvas.width - 60 * scale
+  const guessY = exportCanvas.height - 160 * scale
+  const recentGuesses = guesses.value.slice(-8) // Last 8 guesses
+
+  ctx.textAlign = 'right'
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.8)'
+  ctx.shadowBlur = 8 * scale
+
+  recentGuesses.forEach((guess, i) => {
+    const y = guessY - (recentGuesses.length - i - 1) * 24 * scale
+    const peer = peers.value.find(p => p.id === guess.by)
+    const color = peer?.color || '#fff'
+
+    // Name on left, guess on right
+    ctx.fillStyle = color
+    ctx.globalAlpha = 0.5
+    ctx.font = `${14 * scale}px sans-serif`
+    const nameText = `${guess.displayName}:`
+    const nameWidth = ctx.measureText(nameText).width
+
+    // Draw name (right-aligned at guessX)
+    ctx.fillText(nameText, guessX, y)
+
+    // Draw guess text (right-aligned, to the left of name)
+    ctx.globalAlpha = 0.8
+    ctx.font = `${14 * scale}px sans-serif`
+    const guessWidth = ctx.measureText(guess.text).width
+    ctx.fillText(guess.text, guessX - nameWidth - 8 * scale - guessWidth, y)
+  })
+
+  ctx.globalAlpha = 1
+  ctx.shadowBlur = 0
+
+  // Add info bar at the bottom
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'
+  ctx.fillRect(0, exportCanvas.height - 120 * scale, exportCanvas.width, 120 * scale)
+
+  ctx.fillStyle = 'white'
+  ctx.textAlign = 'center'
+  ctx.font = `bold ${32 * scale}px sans-serif`
+  ctx.fillText(`"${gameState.value.selectedWord}"`, exportCanvas.width / 2, exportCanvas.height - 70 * scale)
+
+  if (gameState.value.winnerId) {
+    ctx.font = `${24 * scale}px sans-serif`
+    ctx.fillText(`🎉 Winner: ${gameState.value.winnerName}`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
+  } else {
+    ctx.font = `${20 * scale}px sans-serif`
+    ctx.fillStyle = '#aaa'
+    ctx.fillText(`Time's up - No winner`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
+  }
+
+  // Add sk3chy branding in lower left
+  ctx.textAlign = 'left'
+  ctx.fillStyle = '#888'
+  ctx.font = `${18 * scale}px sans-serif`
+  ctx.fillText('sk3chy', 20 * scale, exportCanvas.height - 20 * scale)
+
+  // Convert to blob and create preview/download
+  exportCanvas.toBlob((blob) => {
+    if (!blob) return
+    const url = URL.createObjectURL(blob)
+
+    // Set preview
+    if (exportedImageUrl.value) {
+      URL.revokeObjectURL(exportedImageUrl.value)
+    }
+    exportedImageUrl.value = url
+
+    // Download
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `sk3chy-${gameState.value.selectedWord}-${Date.now()}.png`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }, 'image/png', 0.95) // High quality PNG
+}
+
+// Generate preview (not download) when game finishes
+function generatePreview() {
+  try {
+    if (!canvasRef.value?.$el) {
+      console.warn('Canvas ref not available')
+      showFinishModal.value = true
+      return
+    }
+
+    const canvas = canvasRef.value.$el.querySelector('canvas')
+    if (!canvas) {
+      console.warn('Canvas element not found')
+      showFinishModal.value = true
+      return
+    }
+
+    // Use smaller dimensions to avoid freezing
+    const fixedWidth = 800
+    const fixedHeight = 600
+    const scale = 1
+
+    const exportCanvas = document.createElement('canvas')
+    exportCanvas.width = fixedWidth * scale
+    exportCanvas.height = fixedHeight * scale
+    const ctx = exportCanvas.getContext('2d')
+    if (!ctx) {
+      showFinishModal.value = true
+      return
+    }
+
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+
+    const aspectRatio = canvas.width / canvas.height
+    const targetAspectRatio = fixedWidth / fixedHeight
+
+    let drawWidth = fixedWidth * scale
+    let drawHeight = fixedHeight * scale
+    let offsetX = 0
+    let offsetY = 0
+
+    if (aspectRatio > targetAspectRatio) {
+      drawHeight = (fixedWidth / aspectRatio) * scale
+      offsetY = (fixedHeight * scale - drawHeight) / 2
+    } else {
+      drawWidth = (fixedHeight * aspectRatio) * scale
+      offsetX = (fixedWidth * scale - drawWidth) / 2
+    }
+
+    ctx.fillStyle = '#000000'
+    ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
+    ctx.drawImage(canvas, offsetX, offsetY, drawWidth, drawHeight)
+
+    const guessX = exportCanvas.width - 60 * scale
+    const guessY = exportCanvas.height - 160 * scale
+    const recentGuesses = guesses.value.slice(-8)
+
+    ctx.textAlign = 'right'
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)'
+    ctx.shadowBlur = 8 * scale
+
+    recentGuesses.forEach((guess, i) => {
+      const y = guessY - (recentGuesses.length - i - 1) * 24 * scale
+      const peer = peers.value.find(p => p.id === guess.by)
+      const color = peer?.color || '#fff'
+
+      ctx.fillStyle = color
+      ctx.font = `${14 * scale}px sans-serif`
+
+      const nameText = `${guess.displayName}:`
+      const nameWidth = ctx.measureText(nameText).width
+      const guessWidth = ctx.measureText(guess.text).width
+
+      ctx.globalAlpha = 0.8
+      ctx.fillText(guess.text, guessX, y)
+
+      ctx.globalAlpha = 0.5
+      ctx.fillText(nameText, guessX + 8 * scale, y)
+    })
+
+    ctx.globalAlpha = 1
+    ctx.shadowBlur = 0
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'
+    ctx.fillRect(0, exportCanvas.height - 120 * scale, exportCanvas.width, 120 * scale)
+
+    ctx.fillStyle = 'white'
+    ctx.textAlign = 'center'
+    ctx.font = `bold ${32 * scale}px sans-serif`
+    ctx.fillText(`"${gameState.value.selectedWord}"`, exportCanvas.width / 2, exportCanvas.height - 70 * scale)
+
+    if (gameState.value.winnerId) {
+      ctx.font = `${24 * scale}px sans-serif`
+      ctx.fillText(`🎉 Winner: ${gameState.value.winnerName}`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
+    } else {
+      ctx.font = `${20 * scale}px sans-serif`
+      ctx.fillStyle = '#aaa'
+      ctx.fillText(`Time's up - No winner`, exportCanvas.width / 2, exportCanvas.height - 35 * scale)
+    }
+
+    ctx.textAlign = 'left'
+    ctx.fillStyle = '#888'
+    ctx.font = `${18 * scale}px sans-serif`
+    ctx.fillText('sk3chy', 20 * scale, exportCanvas.height - 20 * scale)
+
+    exportCanvas.toBlob((blob) => {
+      if (!blob) {
+        showFinishModal.value = true
+        return
+      }
+      const url = URL.createObjectURL(blob)
+
+      if (exportedImageUrl.value) {
+        URL.revokeObjectURL(exportedImageUrl.value)
+      }
+      exportedImageUrl.value = url
+
+      showFinishModal.value = true
+    }, 'image/png', 0.7)
+  } catch (error) {
+    console.error('Error generating preview:', error)
+    showFinishModal.value = true
+  }
+}
+
+// Generate preview when game finishes
+watch(() => gameState.value.status, (newStatus, oldStatus) => {
+  if (newStatus === 'finished' && oldStatus !== 'finished') {
+    showFinishModal.value = true
+
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => generatePreview(), { timeout: 2000 })
+    } else {
+      setTimeout(() => generatePreview(), 500)
+    }
+  }
+
+  if (oldStatus === 'finished' && newStatus !== 'finished') {
+    showFinishModal.value = false
+    exportedImageUrl.value = null
+  }
+}, { immediate: true })
+
+// Trigger confetti when someone wins
+watch(() => gameState.value.winnerId, (newWinnerId, oldWinnerId) => {
+  if (newWinnerId && !oldWinnerId && gameState.value.status === 'finished') {
+    const duration = 3000
+    const end = Date.now() + duration
+
+    const colors = ['#FF006E', '#00F5FF', '#FFBE0B', '#FB5607', '#8338EC', '#3A86FF', '#06FFA5']
+
+    const frame = () => {
+      confetti({
+        particleCount: 3,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0 },
+        colors: colors,
+        zIndex: 100000
+      })
+      confetti({
+        particleCount: 3,
+        angle: 120,
+        spread: 55,
+        origin: { x: 1 },
+        colors: colors,
+        zIndex: 100000
+      })
+
+      if (Date.now() < end) {
+        requestAnimationFrame(frame)
+      }
+    }
+    frame()
+  }
+})
+
+onMounted(async () => {
+  keys.init()
+
+  // Pre-fill display name from stored username (set ref only — yroom not ready yet)
+  if (keys.username.value) {
+    displayName.value = keys.username.value
+  }
+
+  // Build ICE servers
+  const iceServers: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' }
+  ]
+  if (config.public.turnUsername && config.public.turnCredential) {
+    iceServers.push({
+      urls: [
+        'turn:a.relay.metered.ca:443',
+        'turn:a.relay.metered.ca:443?transport=tcp'
+      ],
+      username: config.public.turnUsername as string,
+      credential: config.public.turnCredential as string
+    })
+  }
+
+  await start({
+    signalingMode: 'webrtc',
+    iceServers,
+    onLog: addLog,
+    // TODO: switch back to statement-store when testnet is up
+    // signalingMode: 'statement-store',
+    // statementStoreEndpoint: config.public.statementStoreWs as string,
+    // signingMode: 'mnemonic',
+    // mnemonic: keys.wallet.value!.mnemonic,
+    // peerId: userId.value,
+    // username: keys.username.value || undefined
+  })
+
+  // Now that yroom is ready, sync display name to awareness
+  if (keys.username.value) {
+    setDisplayName(keys.username.value)
+  }
+})
+</script>
+
+<style scoped>
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+</style>
+
+<template>
+  <!-- Full-screen Lobby for Waiting State -->
+  <div v-if="gameState.status === 'waiting'" class="fixed inset-0 top-14 md:top-16 bg-black z-30 flex flex-col">
+    <!-- Canvas centered on dark background -->
+    <div v-if="ready" class="flex-1 relative min-h-0 flex items-center justify-center p-3">
+      <div class="relative w-full" style="max-height: 80vh;">
+        <YCanvas
+          :strokes="lobbyStrokes"
+          :peers="peers"
+          :canDraw="true"
+          v-model:brushColor="brushColor"
+          v-model:brushSize="brushSize"
+          :onPoint="addLobbyPoint"
+          :onCommit="commitLobbyStroke"
+          :onCursor="setCursor"
+        />
+
+      <!-- Floating top bar -->
+      <div class="absolute top-3 left-3 right-3 flex items-start justify-between gap-2 pointer-events-none z-20">
+        <!-- Left: Room info + players -->
+        <div class="pointer-events-auto">
+          <button
+            @click="lobbyPlayersOpen = !lobbyPlayersOpen"
+            class="flex items-center gap-2 px-3 py-2 bg-black/60 backdrop-blur-md rounded-xl text-white text-sm hover:bg-black/70 transition-colors"
+          >
+            <span class="font-semibold">{{ roomId }}</span>
+            <span class="w-px h-4 bg-white/20"></span>
+            <span :class="isRoomFull ? 'text-red-400' : 'text-white/70'">{{ peers.length }}/{{ maxPlayers }}</span>
+            <span v-if="isRoomFull" class="text-[10px] bg-red-500/80 px-1.5 py-0.5 rounded text-white font-medium">FULL</span>
+            <!-- Player dots -->
+            <span class="flex -space-x-1.5 ml-1">
+              <span
+                v-for="peer in peers.slice(0, 5)"
+                :key="peer.id"
+                class="w-5 h-5 rounded-full border-2 border-black/60 flex-shrink-0"
+                :style="{ backgroundColor: peer.color || '#0aa' }"
+              />
+              <span v-if="peers.length > 5" class="w-5 h-5 rounded-full border-2 border-black/60 bg-gray-600 flex items-center justify-center text-[9px] text-white font-bold flex-shrink-0">
+                +{{ peers.length - 5 }}
+              </span>
+            </span>
+            <span class="text-white/40 text-xs">{{ lobbyPlayersOpen ? '▼' : '▶' }}</span>
+          </button>
+
+          <!-- Expanded player list dropdown -->
+          <div v-if="lobbyPlayersOpen" class="mt-2 bg-black/70 backdrop-blur-md rounded-xl p-3 w-64 max-h-[50vh] overflow-y-auto">
+            <div class="space-y-2 mb-3">
+              <div
+                v-for="peer in peers"
+                :key="peer.id"
+                class="flex items-center gap-2 px-2 py-1.5 rounded-lg"
+                :class="{ 'bg-white/10': peer.id === userId }"
+              >
+                <div
+                  class="w-6 h-6 rounded-full flex-shrink-0"
+                  :style="{ backgroundColor: peer.color || '#0aa' }"
+                />
+                <div class="flex-1 min-w-0">
+                  <span class="text-sm text-white truncate block">
+                    {{ peer.displayName || 'Anonymous' }}
+                    <span v-if="peer.id === userId" class="text-white/40">(you)</span>
+                  </span>
+                </div>
+                <span class="text-xs text-white/50">
+                  {{ peer.id === gameState.hostId ? '🎨' : '👀' }}
+                </span>
+              </div>
+            </div>
+            <!-- Name input -->
+            <div class="pt-2 border-t border-white/10">
+              <input
+                :value="displayName"
+                @input="(e: Event) => { displayName = (e.target as HTMLInputElement).value; setDisplayName((e.target as HTMLInputElement).value) }"
+                placeholder="Your name"
+                class="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/40"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Invite link -->
+        <button
+          @click="copyInviteLink"
+          class="pointer-events-auto flex items-center gap-1.5 px-3 py-2 bg-black/60 backdrop-blur-md rounded-xl text-sm transition-colors"
+          :class="linkCopied ? 'text-green-400' : 'text-white/70 hover:text-white hover:bg-black/70'"
+        >
+          <UIcon :name="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" class="w-4 h-4" />
+          <span class="hidden sm:inline">{{ linkCopied ? 'Copied!' : 'Invite' }}</span>
+        </button>
+      </div>
+
+      <!-- Floating lobby toolbar (bottom center) -->
+      <div class="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none z-20">
+        <div class="flex items-center gap-1.5 bg-black/60 backdrop-blur-md rounded-full px-3 py-2 pointer-events-auto">
+          <!-- Clear canvas -->
+          <button
+            @click="clearLobbyStrokes"
+            class="w-7 h-7 rounded-full border border-white/20 hover:border-white/50 hover:scale-105 transition-all flex items-center justify-center text-white/50 hover:text-white bg-white/5"
+            title="Clear canvas"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+          </button>
+          <div class="w-px h-5 bg-white/15 mx-0.5"></div>
+          <!-- Colors -->
+          <button
+            v-for="color in drawingColors"
+            :key="color"
+            @click="selectColor(color)"
+            class="w-7 h-7 rounded-full border-2 transition-all"
+            :class="brushColor === color ? 'border-white scale-110' : 'border-white/20 hover:scale-105'"
+            :style="{ backgroundColor: color }"
+          />
+        </div>
+      </div>
+
+      <!-- Floating host settings panel (bottom-right) -->
+      <div class="absolute bottom-14 right-3 pointer-events-auto z-20">
+        <div v-if="isHost" class="bg-black/70 backdrop-blur-md rounded-xl p-4 w-64">
+          <h3 class="text-xs font-semibold text-white/50 uppercase tracking-wider mb-3">Game Settings</h3>
+
+          <!-- Difficulty -->
+          <div class="mb-3">
+            <label class="block text-xs text-white/40 mb-1.5">Difficulty</label>
+            <div class="flex gap-1.5">
+              <button
+                v-for="diff in difficulties"
+                :key="diff"
+                @click="setDifficulty(diff)"
+                class="flex-1 py-1.5 px-1 rounded-lg font-medium transition-all text-xs"
+                :class="gameState.difficulty === diff
+                  ? 'bg-white text-black shadow-lg'
+                  : 'bg-white/10 text-white/70 hover:bg-white/20'"
+              >
+                {{ diff }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Duration -->
+          <div class="mb-4">
+            <label class="block text-xs text-white/40 mb-1.5">Time Limit</label>
+            <div class="flex gap-1.5">
+              <button
+                v-for="dur in [{ val: 20, label: '20s' }, { val: 60, label: '1m' }, { val: 180, label: '3m' }, { val: 300, label: '5m' }]"
+                :key="dur.val"
+                @click="setDuration(dur.val)"
+                class="flex-1 py-1.5 px-1 rounded-lg font-medium transition-all text-xs"
+                :class="gameState.duration === dur.val
+                  ? 'bg-white text-black shadow-lg'
+                  : 'bg-white/10 text-white/70 hover:bg-white/20'"
+              >
+                {{ dur.label }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Start -->
+          <button
+            @click="generateWordOptions"
+            class="w-full py-2.5 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl transition-colors text-sm"
+          >
+            Start Game
+          </button>
+        </div>
+
+        <!-- Non-host waiting indicator -->
+        <div v-else class="bg-black/60 backdrop-blur-md rounded-xl px-4 py-3 text-center">
+          <p class="text-white/50 text-sm">Waiting for host...</p>
+        </div>
+      </div>
+
+      <!-- "Warm up!" hint text (center, fades out) -->
+      <div v-if="lobbyStrokes.length === 0" class="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+        <div class="text-center">
+          <p class="text-white/20 text-4xl md:text-6xl font-bold">Warm up!</p>
+          <p class="text-white/10 text-lg mt-2">Draw something while you wait</p>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <!-- Loading state -->
+    <div v-else class="flex-1 flex items-center justify-center">
+      <div class="text-center text-white/50">
+        <div class="animate-spin w-12 h-12 border-4 border-white/30 border-t-white rounded-full mx-auto mb-3"></div>
+        <p>Connecting...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game UI (for other states) -->
+  <section v-else class="p-3 space-y-2">
+    <!-- Compact header -->
+    <div class="flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3 flex-1 min-w-0">
+        <UInput
+          v-model="displayName"
+          placeholder="Your name"
+          size="xs"
+          class="w-32"
+          @update:model-value="setDisplayName"
+        />
+        <UBadge
+          :color="isSpectator ? 'yellow' : isHost ? 'green' : 'gray'"
+          variant="soft"
+          size="xs"
+        >
+          {{ isSpectator ? '👁 Spectating' : isHost ? '🎨' : '👀' }}
+        </UBadge>
+        <UBadge
+          v-if="gameState.status === 'playing'"
+          color="blue"
+          variant="soft"
+          size="xs"
+        >
+          {{ formattedTime }}
+        </UBadge>
+        <UBadge
+          v-if="showCountdownWarning"
+          color="red"
+          variant="solid"
+          size="xs"
+          class="animate-pulse"
+        >
+          {{ timeRemaining }}
+        </UBadge>
+      </div>
+
+      <!-- Collapsible Players -->
+      <div class="relative">
+        <button
+          @click="playersExpanded = !playersExpanded"
+          class="flex items-center gap-2 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-800 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+        >
+          <span>{{ activePlayers.length }} {{ activePlayers.length === 1 ? 'player' : 'players' }}</span>
+          <span v-if="spectators.length" class="text-yellow-500">+{{ spectators.length }}</span>
+          <span class="text-gray-400">{{ playersExpanded ? '▼' : '▶' }}</span>
+        </button>
+        <div
+          v-if="playersExpanded"
+          class="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 rounded border shadow-lg p-2 min-w-[170px] z-20"
+        >
+          <div class="space-y-1 max-h-[250px] overflow-y-auto">
+            <div
+              v-for="peer in activePlayers"
+              :key="peer.id"
+              class="flex items-center gap-2 text-xs"
+            >
+              <div
+                class="w-2 h-2 rounded-full"
+                :style="{ backgroundColor: peer.color || '#0aa' }"
+              />
+              <span class="truncate" :class="{ 'font-semibold': peer.id === userId }">
+                {{ peer.displayName || 'Anonymous' }}
+                <span v-if="peer.id === gameState.hostId">🎨</span>
+                <span v-if="peer.id === gameState.winnerId">🏆</span>
+              </span>
+            </div>
+            <!-- Spectators section -->
+            <template v-if="spectators.length">
+              <div class="border-t border-gray-200 dark:border-gray-700 my-1 pt-1">
+                <p class="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Spectators</p>
+                <div
+                  v-for="peer in spectators"
+                  :key="peer.id"
+                  class="flex items-center gap-2 text-xs opacity-60"
+                >
+                  <div
+                    class="w-2 h-2 rounded-full"
+                    :style="{ backgroundColor: peer.color || '#0aa' }"
+                  />
+                  <span class="truncate" :class="{ 'font-semibold': peer.id === userId }">
+                    {{ peer.displayName || 'Anonymous' }}
+                    <span>👁</span>
+                  </span>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Compact controls row -->
+    <div class="flex items-center gap-2 flex-wrap text-xs">
+
+
+        <!-- Host Controls - Playing -->
+        <template v-if="isHost && gameState.status === 'playing'">
+          <div class="bg-green-100 dark:bg-green-900/30 px-2 py-1 rounded text-green-700 dark:text-green-400 font-semibold">
+            {{ selectedWordLocal }}
+          </div>
+          <UButton
+            @click="clearCanvas"
+            color="red"
+            variant="soft"
+            size="xs"
+          >
+            Clear
+          </UButton>
+          <UButton
+            @click="requestNewGame"
+            color="gray"
+            variant="soft"
+            size="xs"
+          >
+            End
+          </UButton>
+        </template>
+
+
+        <!-- Waiting messages -->
+        <span v-if="!isHost && gameState.status === 'waiting'" class="text-gray-500 text-xs">
+          Waiting for host...
+        </span>
+    </div>
+
+    <!-- Non-host waiting screen during word selection -->
+    <div v-if="!isHost && gameState.status === 'selecting'" class="flex items-center justify-center p-6 min-h-[80vh]">
+      <div class="text-center max-w-2xl w-full">
+        <div class="animate-spin w-16 h-16 border-4 border-primary border-t-transparent rounded-full mx-auto mb-6"></div>
+        <h2 class="text-2xl font-bold mb-2">Host is choosing a word...</h2>
+        <p class="text-gray-600 dark:text-gray-400 mb-8">The game will start soon</p>
+
+        <!-- Players List -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mt-8">
+          <h3 class="text-lg font-semibold mb-4 flex items-center justify-center gap-2">
+            <span>👥</span>
+            <span>Players</span>
+            <span class="text-sm font-normal text-gray-500">{{ peers.length }}</span>
+          </h3>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div
+              v-for="peer in peers"
+              :key="peer.id"
+              class="flex items-center gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-700"
+              :class="{ 'ring-2 ring-primary': peer.id === userId }"
+            >
+              <div
+                class="w-8 h-8 rounded-full flex-shrink-0"
+                :style="{ backgroundColor: peer.color || '#0aa' }"
+              />
+              <div class="flex-1 min-w-0 text-left">
+                <div class="text-sm font-semibold truncate">
+                  {{ peer.displayName || 'Anonymous' }}
+                  <span v-if="peer.id === userId" class="text-xs text-gray-500">(you)</span>
+                </div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">
+                  <span v-if="peer.id === gameState.hostId">🎨 Host</span>
+                  <span v-else>👀 Player</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full-screen Word Selection for Host -->
+    <div v-if="isHost && gameState.status === 'selecting'" class="flex items-center justify-center p-6 min-h-[80vh]">
+      <div class="max-w-4xl w-full">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+          <h2 class="text-3xl font-bold mb-2 text-center">Choose Your Word</h2>
+          <p class="text-gray-600 dark:text-gray-400 text-center mb-8">
+            Select a word to draw for the other players
+          </p>
+
+          <!-- Word Options - 3 across -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <button
+              v-for="word in gameState.wordOptions"
+              :key="word"
+              @click="() => { selectWord(word); selectedWordLocal = word }"
+              class="group relative p-8 rounded-xl border-4 transition-all hover:scale-105"
+              :class="selectedWordLocal === word
+                ? 'border-primary bg-primary/10 shadow-lg'
+                : 'border-gray-200 dark:border-gray-700 hover:border-primary/50'"
+            >
+              <div class="text-center">
+                <div class="text-3xl font-bold" :class="selectedWordLocal === word ? 'text-primary' : 'text-gray-900 dark:text-white'">
+                  {{ word }}
+                </div>
+                <div v-if="selectedWordLocal === word" class="text-primary text-xl mt-2">
+                  ✓
+                </div>
+              </div>
+            </button>
+          </div>
+
+          <!-- Start Button -->
+          <div class="flex justify-center">
+            <UButton
+              v-if="gameState.wordCommitment"
+              @click="startGame"
+              color="primary"
+              size="xl"
+              class="font-bold text-lg px-12"
+            >
+              🎮 Start Drawing! ({{ gameState.duration < 60 ? `${gameState.duration}s` : `${Math.floor(gameState.duration / 60)}m` }})
+            </UButton>
+            <div v-else class="text-gray-500 dark:text-gray-400">
+              Select a word to continue...
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Canvas with overlay -->
+    <div v-if="gameState.status === 'playing' || gameState.status === 'finished'" class="relative">
+      <YCanvas
+        ref="canvasRef"
+        v-if="ready"
+        :strokes="strokes"
+        :peers="peers"
+        :canDraw="canDraw"
+        v-model:brushColor="brushColor"
+        v-model:brushSize="brushSize"
+        :onPoint="(x,y)=>addPoint(x,y)"
+        :onCommit="commitStroke"
+        :onCursor="setCursor"
+      />
+      <p v-else>Connecting…</p>
+
+      <!-- Word Length Hint (letter underlines with progressive reveals) -->
+      <div v-if="(gameState.status === 'playing' || gameState.status === 'finished') && (gameState.wordLength || gameState.selectedWord)" class="absolute top-4 md:top-8 left-1/2 transform -translate-x-1/2 pointer-events-none z-20">
+        <div class="flex gap-3 md:gap-6">
+          <div
+            v-for="(letter, index) in (gameState.status === 'finished' && gameState.selectedWord ? gameState.selectedWord.split('') : Array(gameState.wordLength).fill(''))"
+            :key="index"
+            class="w-5 h-8 md:w-8 md:h-12 border-b-2 md:border-b-4 border-gray-800 dark:border-white flex flex-col items-center justify-end pb-0.5 md:pb-1"
+          >
+            <!-- Finished: show all letters -->
+            <span v-if="gameState.status === 'finished' && letter" class="text-lg md:text-2xl font-bold text-gray-800 dark:text-white">
+              {{ letter.toUpperCase() }}
+            </span>
+            <!-- Playing: show hint letters -->
+            <span v-else-if="hintLetters[index]" class="text-lg md:text-2xl font-bold text-yellow-400">
+              {{ hintLetters[index].toUpperCase() }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Guesses overlay -->
+      <div v-if="ready && (gameState.status === 'playing' || gameState.status === 'finished')" class="absolute bottom-16 right-4 w-64 pointer-events-none select-none z-10">
+        <!-- Guesses list with fade at top -->
+        <div class="relative max-h-[250px]">
+          <div
+            ref="guessesContainer"
+            class="overflow-y-auto p-2 space-y-1 max-h-[250px] pointer-events-auto scrollbar-hide"
+            style="mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%); -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%); scrollbar-width: none; -ms-overflow-style: none;"
+          >
+            <div
+              v-for="guess in guesses"
+              :key="guess.id"
+              class="text-xs text-right"
+              style="text-shadow: 0 0 8px rgba(0,0,0,0.8), 0 0 4px rgba(0,0,0,0.9)"
+            >
+              <span
+                class="opacity-80"
+                :style="{ color: peers.find(p => p.id === guess.by)?.color || '#fff' }"
+              >
+                {{ guess.displayName }}: {{ guess.text }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drawing toolbar (bottom center, only for host during playing) -->
+      <div v-if="ready && isHost && gameState.status === 'playing'" class="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none z-10">
+        <div class="flex items-center gap-1 bg-black/40 backdrop-blur-sm rounded-full p-2">
+          <!-- Undo -->
+          <button
+            @click="undoStroke"
+            class="w-8 h-8 rounded-full border-2 border-gray-600/50 hover:border-white hover:scale-105 transition-all pointer-events-auto flex items-center justify-center text-white/70 hover:text-white bg-gray-700/50"
+            title="Undo"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a5 5 0 015 5v2M3 10l4-4m-4 4l4 4"/></svg>
+          </button>
+          <!-- Eraser -->
+          <button
+            @click="toggleEraser"
+            class="w-8 h-8 rounded-full border-2 transition-all pointer-events-auto flex items-center justify-center bg-gray-700/50"
+            :class="eraserActive ? 'border-white scale-110 text-white' : 'border-gray-600/50 hover:border-white hover:scale-105 text-white/70 hover:text-white'"
+            title="Eraser"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3"/></svg>
+          </button>
+          <div class="w-px h-6 bg-gray-600/50 mx-1"></div>
+          <!-- Colors -->
+          <button
+            v-for="color in drawingColors"
+            :key="color"
+            @click="selectColor(color)"
+            class="w-8 h-8 rounded-full border-2 transition-all pointer-events-auto"
+            :class="!eraserActive && brushColor === color ? 'border-white scale-110' : 'border-gray-600/50 hover:scale-105'"
+            :style="{ backgroundColor: color }"
+          />
+        </div>
+      </div>
+
+      <!-- Input area (viewers during playing, disabled for spectators) -->
+      <div v-if="ready && !isHost && gameState.status === 'playing'" class="absolute bottom-4 right-4 w-64 p-2 pointer-events-auto z-10 bg-black/30 backdrop-blur-sm rounded-lg">
+        <div v-if="isSpectator" class="text-xs text-yellow-400 flex items-center gap-1 justify-center py-1">
+          <span>👁</span> Spectating — joined mid-game
+        </div>
+        <div v-else class="flex gap-1">
+          <UInput
+            v-model="guessInput"
+            placeholder="guess..."
+            size="xs"
+            class="flex-1 transition-opacity"
+            :ui="{ base: 'bg-white/10 border-white/20 text-white placeholder-white/40' }"
+            @keyup.enter="handleSendGuess"
+          />
+          <UButton
+            @click="handleSendGuess"
+            size="xs"
+            color="gray"
+            variant="ghost"
+            class="opacity-60 hover:opacity-100"
+          >
+            →
+          </UButton>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Debug Panel -->
+  <DebugPanel />
+
+  <!-- Game Finished Modal (outside section so it's always available) -->
+  <div v-if="showFinishModal && gameState.status === 'finished'" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 md:p-4" style="z-index: 99999;" @click.self="handleNewGame">
+    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-4xl w-full max-h-[95vh] md:max-h-none overflow-y-auto p-3 md:p-6 relative">
+      <!-- Close button (mobile only) -->
+      <button
+        @click="handleNewGame"
+        class="md:hidden absolute top-2 left-2 p-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-full transition-colors z-10"
+        title="Close"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+
+      <!-- Responsive Layout: Horizontal on desktop, Vertical on mobile -->
+      <div class="flex flex-col md:flex-row gap-3 md:gap-6">
+        <!-- PNG Preview (optional - loads in background) -->
+        <div v-if="exportedImageUrl" class="flex-shrink-0 md:w-1/2 relative mx-auto max-w-[80vw] md:max-w-none">
+          <div class="rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700 aspect-[4/3] md:aspect-auto md:h-auto flex items-center justify-center bg-black">
+            <img :src="exportedImageUrl" alt="Drawing" class="w-full h-full object-contain" />
+          </div>
+          <!-- Download button overlay -->
+          <button
+            @click="downloadDrawing"
+            class="absolute top-2 right-2 p-2 bg-black/60 hover:bg-black/80 backdrop-blur-sm rounded-lg transition-all"
+            title="Download PNG"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Loading placeholder while preview generates -->
+        <div v-else class="flex-shrink-0 md:w-1/2 relative">
+          <div class="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 h-64 md:h-full flex items-center justify-center">
+            <div class="text-center text-gray-400">
+              <div class="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-3"></div>
+              <p class="text-sm">Generating preview...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Info Panel -->
+        <div class="flex-1 flex flex-col justify-between min-h-0">
+          <div>
+            <h2 class="text-xl md:text-3xl font-bold mb-2 md:mb-3">Game Over!</h2>
+
+            <div class="space-y-2 md:space-y-3">
+              <div>
+                <p class="text-gray-600 dark:text-gray-400 text-xs mb-1">The word was:</p>
+                <p class="text-xl md:text-3xl font-bold text-primary">{{ gameState.selectedWord }}</p>
+              </div>
+
+              <div v-if="gameState.winnerId">
+                <p class="text-gray-600 dark:text-gray-400 text-xs mb-1">Winner:</p>
+                <p class="text-lg md:text-2xl font-bold text-green-600 dark:text-green-400">
+                  🏆 {{ gameState.winnerName }}
+                </p>
+              </div>
+              <div v-else>
+                <p class="text-gray-600 dark:text-gray-400 text-xs mb-1">Result:</p>
+                <p class="text-lg md:text-xl font-semibold text-gray-500">
+                  ⏱️ Time's up - No winner
+                </p>
+              </div>
+
+              <div class="text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-700">
+                <div class="flex items-center gap-2">
+                  <span>Commitment Verification:</span>
+                  <div v-if="gameState.commitmentVerified !== null" class="inline-flex items-center gap-1 px-2 py-1 rounded-full" :class="gameState.commitmentVerified ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'">
+                    <span>{{ gameState.commitmentVerified ? '✓' : '✗' }}</span>
+                    <span class="hidden md:inline">{{ gameState.commitmentVerified ? 'Verified' : 'Failed' }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-3 md:mt-4 flex justify-center">
+            <UButton
+              @click.stop="handleNewGame"
+              color="primary"
+              size="lg"
+              :loading="electionInProgress"
+              :disabled="electionInProgress"
+            >
+              {{ electionInProgress ? 'Electing host...' : 'Play Again' }}
+            </UButton>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>

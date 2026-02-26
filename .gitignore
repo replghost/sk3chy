@@ -4,6 +4,14 @@ dist/
 *.log
 .env
 .env.local
+.vscode/
+.vercel/
+.nitro/
+
+game-app/.nuxt/
+game-app/.output/
+
+temp
 
 # Foundry
 contracts/cache/

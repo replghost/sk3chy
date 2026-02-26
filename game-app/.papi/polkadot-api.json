@@ -1,0 +1,12 @@
+{
+  "version": 0,
+  "descriptorPath": ".papi/descriptors",
+  "entries": {
+    "preview": {
+      "wsUrl": "wss://previewnet.substrate.dev/people",
+      "metadata": ".papi/metadata/preview.scale",
+      "genesis": "0xe394ad2a181da49ec18d297c00def5d3dc7a5beafafab0526cce631cb151dc57",
+      "codeHash": "0xa11ae56febc693308c76287b8db335251f12372b3517bec712ab86bfbacd3018"
+    }
+  }
+}
