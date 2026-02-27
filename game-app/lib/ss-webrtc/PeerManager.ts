@@ -306,7 +306,14 @@ export class PeerManager {
     }
 
     try {
-      conn.dc.send(data)
+      if (typeof data === 'string') {
+        conn.dc.send(data)
+      } else {
+        // Use ArrayBuffer for cross-browser binary interoperability (Firefox/Chromium).
+        const buffer = new ArrayBuffer(data.length)
+        new Uint8Array(buffer).set(data)
+        conn.dc.send(buffer)
+      }
       return true
     } catch (error) {
       this.events.onLog(`Failed to send data to ${peerId}: ${error}`, 'error')
@@ -318,10 +325,20 @@ export class PeerManager {
    * Broadcast data to all connected peers via data channel
    */
   broadcast(data: Uint8Array | string): void {
+    let binaryBuffer: ArrayBuffer | null = null
+    if (typeof data !== 'string') {
+      binaryBuffer = new ArrayBuffer(data.length)
+      new Uint8Array(binaryBuffer).set(data)
+    }
+
     for (const [peerId, conn] of this.peers) {
       if (conn.dc && conn.dc.readyState === 'open') {
         try {
-          conn.dc.send(data)
+          if (typeof data === 'string') {
+            conn.dc.send(data)
+          } else {
+            conn.dc.send(binaryBuffer!)
+          }
         } catch (error) {
           this.events.onLog(`Failed to broadcast to ${peerId}: ${error}`, 'warning')
         }
@@ -471,6 +488,13 @@ export class PeerManager {
     dc.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) {
         this.events.onData(peerId, new Uint8Array(event.data))
+      } else if (typeof Blob !== 'undefined' && event.data instanceof Blob) {
+        // Firefox may deliver binary frames as Blob even when binaryType is arraybuffer.
+        void event.data.arrayBuffer().then((buffer) => {
+          this.events.onData(peerId, new Uint8Array(buffer))
+        }).catch(() => {
+          this.events.onLog(`Failed to decode Blob message from ${peerId}`, 'warning')
+        })
       } else if (typeof event.data === 'string') {
         this.events.onData(peerId, new TextEncoder().encode(event.data))
       }
