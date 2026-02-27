@@ -36,7 +36,7 @@ export function useSubstrateWallet() {
       if (!target) throw new Error('No Substrate wallets detected')
 
       connectedExtension.value = target
-      const dappName = (config.public.substrateDappName as string) || 'sk3tchy'
+      const dappName = (config.public.substrateDappName as string) || 'sk3chy'
       activeExtension = await connectInjectedExtension(target, dappName)
 
       const nextAccounts = activeExtension.getAccounts()

@@ -5,7 +5,7 @@
       <div class="text-center space-y-2">
         <h1 class="text-4xl md:text-5xl font-bold">NFT Gallery [Under Construction]</h1>
         <p class="text-gray-600 dark:text-gray-400">
-          Browse all minted sk3tchy NFTs
+          Browse all minted sk3chy NFTs
         </p>
       </div>
 
@@ -218,7 +218,7 @@ function viewOnBlockScout(tokenId: number) {
 useHead({
   title: 'NFT Gallery - sk3chy',
   meta: [
-    { name: 'description', content: 'Browse all minted sk3tchy NFT drawings' }
+    { name: 'description', content: 'Browse all minted sk3chy NFT drawings' }
   ]
 })
 </script>

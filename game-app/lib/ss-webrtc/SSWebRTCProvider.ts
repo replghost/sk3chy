@@ -92,7 +92,7 @@ export class SSWebRTCProvider {
       documentId,
       peerId: this.peerId,
       username: config.username,
-      presenceTtl: config.presenceTtl || 5000,
+      presenceTtl: config.presenceTtl || 30000,
       pollInterval: config.pollInterval || 100,
       events: {
         onPeerDiscovered: this.handlePeerDiscovered.bind(this),
@@ -278,7 +278,16 @@ export class SSWebRTCProvider {
     this.log(`Handling offer from ${from}`, 'info')
 
     // Accept the offer and create an answer
-    await this.peerManager.handleOffer(from, sdp, this.localStream, this.config.forceRelay)
+    try {
+      await this.peerManager.handleOffer(from, sdp, this.localStream, this.config.forceRelay)
+    } catch (error: any) {
+      const message = error?.message || String(error)
+      if (message.includes('Peer connection is closed')) {
+        this.log(`Ignoring closed-peer offer from ${from}`, 'warning')
+        return
+      }
+      throw error
+    }
   }
 
   /**
@@ -286,7 +295,16 @@ export class SSWebRTCProvider {
    */
   private async handleAnswerReceived(from: string, sdp: string, _epoch: number): Promise<void> {
     this.log(`Handling answer from ${from}`, 'info')
-    await this.peerManager.handleAnswer(from, sdp)
+    try {
+      await this.peerManager.handleAnswer(from, sdp)
+    } catch (error: any) {
+      const message = error?.message || String(error)
+      if (message.includes('Peer connection is closed')) {
+        this.log(`Ignoring late answer from closed peer ${from}`, 'warning')
+        return
+      }
+      throw error
+    }
   }
 
   /**
@@ -358,11 +376,15 @@ export class SSWebRTCProvider {
   }
 
   private handleOfferReady(peerId: string, sdp: string): void {
-    this.signaling.sendOffer(peerId, sdp)
+    void this.signaling.sendOffer(peerId, sdp).catch((error) => {
+      this.log(`Failed to send offer to ${peerId}: ${error}`, 'error')
+    })
   }
 
   private handleAnswerReady(peerId: string, sdp: string): void {
-    this.signaling.sendAnswer(peerId, sdp)
+    void this.signaling.sendAnswer(peerId, sdp).catch((error) => {
+      this.log(`Failed to send answer to ${peerId}: ${error}`, 'error')
+    })
   }
 
   // ============================================================================

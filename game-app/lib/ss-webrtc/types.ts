@@ -56,7 +56,7 @@ export interface SSWebRTCConfig {
   keyType?: KeypairType
   /** Poll interval in ms (default: 500ms) */
   pollInterval?: number
-  /** Presence TTL in ms (default: 20000ms) */
+  /** Presence TTL in ms (default: 30000ms) */
   presenceTtl?: number
   /** Cloudflare TURN key ID */
   turnKeyId?: string

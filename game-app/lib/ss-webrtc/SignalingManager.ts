@@ -25,13 +25,13 @@ import {
 
 export interface SignalingEvents {
   /** Called when a new peer is discovered via presence */
-  onPeerDiscovered: (peerId: string, username?: string) => void
+  onPeerDiscovered: (peerId: string, username?: string) => void | Promise<void>
   /** Called when a peer's presence expires */
-  onPeerExpired: (peerId: string) => void
+  onPeerExpired: (peerId: string) => void | Promise<void>
   /** Called when an offer is received (we are the answerer) */
-  onOfferReceived: (from: string, sdp: string, epoch: number) => void
+  onOfferReceived: (from: string, sdp: string, epoch: number) => void | Promise<void>
   /** Called when an answer is received (we are the offerer) */
-  onAnswerReceived: (from: string, sdp: string, epoch: number) => void
+  onAnswerReceived: (from: string, sdp: string, epoch: number) => void | Promise<void>
   /** Logging callback */
   onLog: (message: string, type: LogType) => void
 }
@@ -312,7 +312,7 @@ export class SignalingManager {
         // If we knew this peer, notify expiration
         if (this.knownPeers.has(presence.peerId)) {
           this.knownPeers.delete(presence.peerId)
-          this.events.onPeerExpired(presence.peerId)
+          await this.events.onPeerExpired(presence.peerId)
         }
         continue
       }
@@ -324,7 +324,7 @@ export class SignalingManager {
       if (!existingPresence) {
         this.knownPeers.set(presence.peerId, presence)
         this.events.onLog(`Discovered peer: ${presence.username || presence.peerId}`, 'success')
-        this.events.onPeerDiscovered(presence.peerId, presence.username)
+        await this.events.onPeerDiscovered(presence.peerId, presence.username)
       } else if (presence.timestamp > existingPresence.timestamp) {
         // Update with newer presence
         this.knownPeers.set(presence.peerId, presence)
@@ -337,7 +337,7 @@ export class SignalingManager {
         const presence = this.knownPeers.get(peerId)
         if (presence && isPresenceExpired(presence, now)) {
           this.knownPeers.delete(peerId)
-          this.events.onPeerExpired(peerId)
+          await this.events.onPeerExpired(peerId)
         }
       }
     }
@@ -401,7 +401,7 @@ export class SignalingManager {
       this.processedOffers.add(processKey)
 
       this.events.onLog(`Received offer from ${offer.from}`, 'blockchain')
-      this.events.onOfferReceived(offer.from, offer.sdp, offer.epoch)
+      await this.events.onOfferReceived(offer.from, offer.sdp, offer.epoch)
     }
   }
 
@@ -437,7 +437,7 @@ export class SignalingManager {
       this.processedAnswers.add(processKey)
 
       this.events.onLog(`Received answer from ${answer.from}`, 'blockchain')
-      this.events.onAnswerReceived(answer.from, answer.sdp, answer.epoch)
+      await this.events.onAnswerReceived(answer.from, answer.sdp, answer.epoch)
     }
   }
 

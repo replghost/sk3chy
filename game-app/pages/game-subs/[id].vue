@@ -2150,7 +2150,7 @@ watch([address, isConnected], ([newAddress, newIsConnected], [prevAddress, prevC
             <!-- Setup Warning -->
             <div v-if="!NFT_CONTRACT_ADDRESS" class="p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
               <p class="text-xs text-yellow-800 dark:text-yellow-200">
-                ⚠️ NFT contract not configured. Deploy the Sk3tchyNFT contract and add the address to mint NFTs.
+                ⚠️ NFT contract not configured. Deploy the NFT contract and add the address to mint NFTs.
               </p>
             </div>
           </div>

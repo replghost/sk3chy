@@ -261,7 +261,7 @@ export function useNFTGallery() {
             gameId: Number(gameId),
             metadata,
             imageUrl,
-            name: metadata?.name || `sk3tchy #${i}`,
+            name: metadata?.name || `sk3chy #${i}`,
             description: metadata?.description || '',
             attributes: metadata?.attributes || []
           })

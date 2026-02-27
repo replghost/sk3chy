@@ -15,7 +15,7 @@
           ? 'bg-black/40 hover:bg-black/60'
           : 'bg-black/30 hover:bg-black/50'"
       >
-        <span class="text-sm font-bold text-white/80 hover:text-white transition-colors">sk3tchy</span>
+        <span class="text-sm font-bold text-white/80 hover:text-white transition-colors">sk3chy</span>
       </div>
     </NuxtLink>
 

@@ -26,10 +26,10 @@ function buildMessage(params: {
   chainId: string
   issuedAt: string
 }) {
-  return `sk3tchy wants you to sign in with your Substrate account:
+  return `sk3chy wants you to sign in with your Substrate account:
 ${params.address}
 
-Statement: Sign in to sk3tchy to verify you control this wallet.
+Statement: Sign in to sk3chy to verify you control this wallet.
 
 URI: ${window.location.origin}
 Chain: ${params.chainId}

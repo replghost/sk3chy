@@ -76,8 +76,8 @@ export function useIPFSUpload() {
 
       // Create and upload metadata
       const nftMetadata = {
-        name: `sk3tchy: ${metadata.word}`,
-        description: `A drawing of "${metadata.word}" created in the sk3tchy game`,
+        name: `sk3chy: ${metadata.word}`,
+        description: `A drawing of "${metadata.word}" created in the sk3chy game`,
         image: `ipfs://${imageCid}`,
         external_url: 'https://sk3chy.com/gallery',
         attributes: [

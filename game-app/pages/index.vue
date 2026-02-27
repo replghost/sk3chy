@@ -7,7 +7,7 @@
       <!-- Hero -->
       <div>
         <h1 class="text-6xl sm:text-7xl md:text-9xl font-black tracking-tight text-white hero-title leading-none">
-          sk3tchy
+          sk3chy
         </h1>
         <p class="text-lg md:text-2xl text-white/60 font-medium mt-2">
           Draw. Guess. Win.

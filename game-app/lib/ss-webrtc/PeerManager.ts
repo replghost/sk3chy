@@ -268,6 +268,14 @@ export class PeerManager {
       return
     }
 
+    if (conn.pc.signalingState !== 'have-local-offer') {
+      this.events.onLog(
+        `Ignoring answer from ${peerId}: signaling state is ${conn.pc.signalingState}`,
+        'warning'
+      )
+      return
+    }
+
     try {
       await conn.pc.setRemoteDescription({
         type: 'answer',
@@ -275,7 +283,13 @@ export class PeerManager {
       })
 
       this.events.onLog(`Answer applied for ${peerId}`, 'success')
-    } catch (error) {
+    } catch (error: any) {
+      const msg = error?.message || String(error)
+      if (msg.includes('Peer connection is closed')) {
+        this.events.onLog(`Ignoring answer from ${peerId}: peer connection already closed`, 'warning')
+        this.cleanupPeer(peerId)
+        return
+      }
       this.events.onLog(`Failed to apply answer from ${peerId}: ${error}`, 'error')
       this.cleanupPeer(peerId)
       throw error
@@ -417,13 +431,7 @@ export class PeerManager {
       const state = pc.connectionState
       this.events.onLog(`Connection state for ${peerId}: ${state}`, 'info')
 
-      if (state === 'connected') {
-        const conn = this.peers.get(peerId)
-        if (conn && !conn.connected) {
-          conn.connected = true
-          this.events.onConnect(peerId)
-        }
-      } else if (state === 'failed' || state === 'closed') {
+      if (state === 'failed' || state === 'closed') {
         this.handleConnectionFailure(peerId, state)
       }
     }

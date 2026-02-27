@@ -40,7 +40,7 @@ export function useSIWE(yroom: any) {
     const message = `${window.location.host} wants you to sign in with your Ethereum account:
 ${address}
 
-Sign in to sk3tchy room: ${roomId}
+Sign in to sk3chy room: ${roomId}
 
 URI: ${window.location.origin}
 Version: 1
