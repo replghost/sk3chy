@@ -118,6 +118,15 @@ bun run dev
 
 Optional override in `game-app/.env`:
 ```
-NUXT_PUBLIC_STATEMENT_STORE_WS=wss://pop-testnet.parity-lab.parity.io:443/9910
+NUXT_PUBLIC_STATEMENT_STORE_WS=wss://pop3-testnet.parity-lab.parity.io:443/7912
 NUXT_PUBLIC_STATEMENT_STORE_SIGNING=ephemeral
+```
+
+`sdchat`-aligned alternatives:
+```
+# PoP Stable
+NUXT_PUBLIC_STATEMENT_STORE_WS=wss://pop3-testnet.parity-lab.parity.io:443/7912
+
+# PreviewNet
+NUXT_PUBLIC_STATEMENT_STORE_WS=wss://previewnet.substrate.dev/people
 ```

@@ -43,10 +43,18 @@ const CHAIN_OPTIONS = [
   { label: 'PreviewNet', endpoint: 'wss://previewnet.substrate.dev/people' },
 ]
 
-// Check URL for chain override, otherwise use config default
-const urlChain = typeof window !== 'undefined' ? new URL(window.location.href).searchParams.get('chain') : null
+const ALLOWED_ENDPOINTS = new Set(CHAIN_OPTIONS.map((chain) => chain.endpoint))
+
+// Check URL for chain override, otherwise use config default.
+// To keep behavior aligned with sdchat, only allow configured endpoints.
+const urlChainRaw = typeof window !== 'undefined' ? new URL(window.location.href).searchParams.get('chain') : null
+const urlChain = urlChainRaw && ALLOWED_ENDPOINTS.has(urlChainRaw) ? urlChainRaw : null
+const configuredEndpointRaw = config.public.statementStoreWs as string
+const configuredEndpoint = ALLOWED_ENDPOINTS.has(configuredEndpointRaw)
+  ? configuredEndpointRaw
+  : CHAIN_OPTIONS[0].endpoint
 const selectedEndpoint = ref(
-  urlChain || (config.public.statementStoreWs as string) || CHAIN_OPTIONS[0].endpoint
+  urlChain || configuredEndpoint
 )
 const connecting = ref(false)
 const connectionError = ref<string | null>(null)
