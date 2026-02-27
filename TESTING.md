@@ -120,7 +120,12 @@ Optional override in `game-app/.env`:
 ```
 NUXT_PUBLIC_STATEMENT_STORE_WS=wss://pop3-testnet.parity-lab.parity.io/people
 NUXT_PUBLIC_STATEMENT_STORE_SIGNING=ephemeral
+NUXT_PUBLIC_PEOPLE_CHAIN_WS=wss://pop3-testnet.parity-lab.parity.io/people
 ```
+
+Important:
+- `NUXT_PUBLIC_PEOPLE_CHAIN_WS` should match `NUXT_PUBLIC_STATEMENT_STORE_WS`.
+- Local wallets must complete on-chain username registration for the selected chain before room join (otherwise writes are rejected with `noAllowance`).
 
 `sdchat`-aligned alternatives:
 ```

@@ -1,16 +1,11 @@
-import { cookieStorage, createConfig, createStorage, http } from '@wagmi/vue'
+import { cookieStorage, createConfig, createStorage, http, injected } from '@wagmi/vue'
 import { mainnet, optimism, sepolia } from '@wagmi/vue/chains'
-import { injected, metaMask, walletConnect } from '@wagmi/vue/connectors'
 import { passetHub } from '~/utils/chains'
 
 export const config = createConfig({
   chains: [passetHub, mainnet, sepolia, optimism],
   connectors: [
     injected(),
-    walletConnect({
-      projectId: process.env.NUXT_PUBLIC_WC_PROJECT_ID!,
-    }),
-    metaMask(),
   ],
   storage: createStorage({
     storage: cookieStorage,

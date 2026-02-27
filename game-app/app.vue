@@ -3,7 +3,11 @@
     <AppHeader />
     <NuxtPage />
     <AppFooter />
-    <OnboardingModal v-model="showOnboarding" />
+    <OnboardingModal
+      v-model="showOnboarding"
+      :require-on-chain="onboardingRequireOnChain"
+      :chain-endpoint="onboardingChainEndpoint"
+    />
   </div>
 </template>
 
@@ -12,6 +16,8 @@ import { useBrowserKeys } from '~/composables/useBrowserKeys'
 
 const keys = useBrowserKeys()
 const showOnboarding = useState('showOnboarding', () => false)
+const onboardingRequireOnChain = useState('onboardingRequireOnChain', () => false)
+const onboardingChainEndpoint = useState('onboardingChainEndpoint', () => '')
 
 onMounted(() => {
   keys.init()

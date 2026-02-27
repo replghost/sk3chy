@@ -13,15 +13,26 @@ type AvailabilityStatus = 'AVAILABLE' | 'TAKEN' | 'INVALID' | null
 
 const STORAGE_KEY_FULL_USERNAME = 'sk3tchy-full-username'
 const STORAGE_KEY_REGISTERED = 'sk3tchy-registered'
+const STORAGE_KEY_REGISTERED_ENDPOINT = 'sk3tchy-registered-endpoint'
 
 // Module-level state (singleton)
 const status = ref<RegistrationStatus>('idle')
 const errorMessage = ref('')
 const availabilityStatus = ref<AvailabilityStatus>(null)
 const fullUsername = ref('')
+const chainRegistered = ref(false)
+const registeredEndpoint = ref('')
 const isRegistered = computed(() => status.value === 'done' || !!fullUsername.value)
+const isChainRegistered = computed(() => chainRegistered.value)
+const isRegisteredForCurrentEndpoint = computed(() => {
+  if (!isChainRegistered.value) return false
+  if (!registeredEndpoint.value) return false
+  if (!currentEndpoint.value) return true
+  return registeredEndpoint.value === currentEndpoint.value
+})
 
 let checkTimeout: ReturnType<typeof setTimeout> | null = null
+let currentEndpoint = ''
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message = 'Timeout'): Promise<T> {
   return Promise.race([
@@ -34,12 +45,22 @@ export function useUsernameRegistration() {
   function init(endpoint?: string) {
     if (endpoint) {
       setEndpoint(endpoint)
+      currentEndpoint = endpoint
     }
     // Restore from localStorage
     const stored = localStorage.getItem(STORAGE_KEY_FULL_USERNAME)
+    const storedEndpoint = localStorage.getItem(STORAGE_KEY_REGISTERED_ENDPOINT) || ''
+    registeredEndpoint.value = storedEndpoint
+
+    chainRegistered.value = localStorage.getItem(STORAGE_KEY_REGISTERED) === 'true'
+    const endpointMatches = !currentEndpoint || !storedEndpoint || storedEndpoint === currentEndpoint
+
     if (stored) {
       fullUsername.value = stored
-      status.value = 'done'
+      status.value = chainRegistered.value && endpointMatches ? 'done' : 'idle'
+    } else {
+      fullUsername.value = ''
+      status.value = 'idle'
     }
   }
 
@@ -109,6 +130,11 @@ export function useUsernameRegistration() {
       // Save to localStorage
       localStorage.setItem(STORAGE_KEY_FULL_USERNAME, response.username)
       localStorage.setItem(STORAGE_KEY_REGISTERED, 'true')
+      chainRegistered.value = true
+      if (currentEndpoint) {
+        localStorage.setItem(STORAGE_KEY_REGISTERED_ENDPOINT, currentEndpoint)
+        registeredEndpoint.value = currentEndpoint
+      }
       status.value = 'done'
     } catch (err) {
       console.error('Registration failed:', err)
@@ -128,6 +154,10 @@ export function useUsernameRegistration() {
   function useLocalOnly(username: string) {
     fullUsername.value = username
     localStorage.setItem(STORAGE_KEY_FULL_USERNAME, username)
+    localStorage.removeItem(STORAGE_KEY_REGISTERED)
+    localStorage.removeItem(STORAGE_KEY_REGISTERED_ENDPOINT)
+    chainRegistered.value = false
+    registeredEndpoint.value = ''
     status.value = 'done'
   }
 
@@ -136,8 +166,11 @@ export function useUsernameRegistration() {
     errorMessage.value = ''
     availabilityStatus.value = null
     fullUsername.value = ''
+    chainRegistered.value = false
+    registeredEndpoint.value = ''
     localStorage.removeItem(STORAGE_KEY_FULL_USERNAME)
     localStorage.removeItem(STORAGE_KEY_REGISTERED)
+    localStorage.removeItem(STORAGE_KEY_REGISTERED_ENDPOINT)
   }
 
   return {
@@ -146,6 +179,9 @@ export function useUsernameRegistration() {
     availabilityStatus,
     fullUsername,
     isRegistered,
+    isChainRegistered,
+    isRegisteredForCurrentEndpoint,
+    registeredEndpoint,
     init,
     checkAvailability,
     register,

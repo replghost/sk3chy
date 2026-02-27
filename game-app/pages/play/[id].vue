@@ -6,6 +6,7 @@ import confetti from 'canvas-confetti'
 import YCanvas from '~/components/YCanvas.vue'
 import { useDrawingGame } from '~/composables/useDrawingGame'
 import { useBrowserKeys } from '~/composables/useBrowserKeys'
+import { useUsernameRegistration } from '~/composables/useUsernameRegistration'
 import { useLogger } from '~/composables/useLogger'
 import { getAllDifficulties, type DifficultyLevel } from '~/utils/wordDictionary'
 
@@ -13,7 +14,11 @@ const config = useRuntimeConfig()
 const route = useRoute()
 const roomId = `play-${String(route.params.id)}`
 const keys = useBrowserKeys()
+const registration = useUsernameRegistration()
 const { addLog } = useLogger()
+const showOnboarding = useState<boolean>('showOnboarding')
+const onboardingRequireOnChain = useState<boolean>('onboardingRequireOnChain', () => false)
+const onboardingChainEndpoint = useState<string>('onboardingChainEndpoint', () => '')
 
 const {
   ready, strokes, lobbyStrokes, peers, guesses, brushColor, brushSize, userId, displayName,
@@ -56,6 +61,7 @@ const configuredEndpoint = ALLOWED_ENDPOINTS.has(configuredEndpointRaw)
 const selectedEndpoint = ref(
   urlChain || configuredEndpoint
 )
+const configuredMode = (config.public.signalingMode as string) || 'webrtc'
 const connecting = ref(false)
 const connectionError = ref<string | null>(null)
 const selectedChainLabel = computed(() => {
@@ -560,6 +566,21 @@ async function connectToChain(endpoint: string) {
       useHostMode = spektrReady && !!keys.spektrAccount.value
     }
 
+    // Statement store requires an account with on-chain username + allowance.
+    // Match web3-meet behavior: block room join until registration is complete.
+    if (configuredMode === 'statement-store' && !useHostMode) {
+      registration.init(endpoint)
+      onboardingChainEndpoint.value = endpoint
+      onboardingRequireOnChain.value = true
+
+      if (!registration.isRegisteredForCurrentEndpoint.value) {
+        showOnboarding.value = true
+        throw new Error('On-chain registration required for this chain before joining')
+      }
+    } else {
+      onboardingRequireOnChain.value = false
+    }
+
     const startWithWebrtcFallback = async () => {
       const signalingServer = (config.public.signalingServer as string) || 'ws://localhost:4444'
       const iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -585,7 +606,6 @@ async function connectToChain(endpoint: string) {
       })
     }
 
-    const configuredMode = (config.public.signalingMode as string) || 'webrtc'
     if (configuredMode !== 'statement-store') {
       preferredName = (useHostMode ? keys.spektrAccount.value?.name : keys.username.value) || undefined
       await startWithWebrtcFallback()
@@ -640,14 +660,28 @@ async function connectToChain(endpoint: string) {
 
 onMounted(() => {
   keys.init()
+  registration.init(selectedEndpoint.value)
 
   // Pre-fill display name from stored username
-  if (keys.username.value) {
-    displayName.value = keys.username.value
+  const preferredName = registration.fullUsername.value || keys.username.value
+  if (preferredName) {
+    displayName.value = preferredName
   }
 
   // Auto-connect to default chain
   connectToChain(selectedEndpoint.value)
+})
+
+watch(showOnboarding, (open, wasOpen) => {
+  if (
+    wasOpen &&
+    !open &&
+    configuredMode === 'statement-store' &&
+    !ready.value &&
+    !connecting.value
+  ) {
+    connectToChain(selectedEndpoint.value)
+  }
 })
 </script>
 

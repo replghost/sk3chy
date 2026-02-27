@@ -5,9 +5,10 @@
         <div class="flex items-center justify-between">
           <h3 class="text-xl font-semibold">
             <template v-if="step === 1">Welcome to sk3chy</template>
+            <template v-else-if="requireOnChain">On-Chain Username Required</template>
             <template v-else>Choose a Username</template>
           </h3>
-          <span class="text-xs text-gray-400">{{ step }}/2</span>
+          <span class="text-xs text-gray-400">{{ step }}/{{ totalSteps }}</span>
         </div>
       </template>
 
@@ -25,7 +26,12 @@
       <!-- Step 2: Choose Username -->
       <div v-if="step === 2" class="space-y-4">
         <p class="text-gray-600 dark:text-gray-400">
-          Pick a username to identify yourself in games.
+          <template v-if="requireOnChain">
+            Pick a username to register on-chain before joining this room.
+          </template>
+          <template v-else>
+            Pick a username to identify yourself in games.
+          </template>
         </p>
 
         <UInput
@@ -58,6 +64,7 @@
         <div v-if="registration.status.value === 'error'" class="text-sm space-y-2">
           <p class="text-red-500">{{ registration.errorMessage.value }}</p>
           <UButton
+            v-if="!requireOnChain"
             @click="useLocalFallback"
             size="sm"
             color="gray"
@@ -73,7 +80,7 @@
           <!-- Left side -->
           <div>
             <UButton
-              v-if="step === 2"
+              v-if="step === 2 && !requireOnChain"
               @click="skipUsername"
               variant="link"
               color="gray"
@@ -86,7 +93,7 @@
           <!-- Right side -->
           <div class="flex gap-2">
             <UButton
-              v-if="step === 2"
+              v-if="step === 2 && totalSteps > 1"
               @click="step = 1"
               variant="ghost"
               color="gray"
@@ -95,7 +102,7 @@
             </UButton>
 
             <UButton
-              v-if="step === 1"
+              v-if="step === 1 && totalSteps > 1"
               @click="step = 2"
               color="primary"
             >
@@ -126,6 +133,14 @@ import { useUsernameRegistration } from '~/composables/useUsernameRegistration'
 import { useLogger } from '~/composables/useLogger'
 import { validateUsername } from '~/lib/usernameRegistration'
 
+const props = withDefaults(defineProps<{
+  requireOnChain?: boolean
+  chainEndpoint?: string
+}>(), {
+  requireOnChain: false,
+  chainEndpoint: ''
+})
+
 const isOpen = defineModel<boolean>({ default: false })
 const config = useRuntimeConfig()
 const keys = useBrowserKeys()
@@ -134,6 +149,13 @@ const { addLog } = useLogger()
 
 const step = ref(1)
 const usernameInput = ref('')
+const totalSteps = computed(() => props.requireOnChain ? 1 : 2)
+const requireOnChain = computed(() => props.requireOnChain)
+const registrationEndpoint = computed(() => {
+  return props.chainEndpoint
+    || (config.public.statementStoreWs as string)
+    || (config.public.peopleChainWs as string)
+})
 
 const isValidFormat = computed(() => validateUsername(usernameInput.value).valid)
 
@@ -151,7 +173,22 @@ const inputColor = computed(() => {
 
 onMounted(() => {
   keys.init()
-  registration.init(config.public.peopleChainWs as string)
+  step.value = props.requireOnChain ? 2 : 1
+  registration.init(registrationEndpoint.value)
+})
+
+watch(() => props.chainEndpoint, (next) => {
+  if (next) registration.init(next)
+})
+
+watch(() => props.requireOnChain, (required) => {
+  if (required) step.value = 2
+})
+
+watch(isOpen, (open) => {
+  if (!open) return
+  registration.init(registrationEndpoint.value)
+  step.value = props.requireOnChain ? 2 : 1
 })
 
 function onUsernameInput() {

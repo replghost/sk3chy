@@ -34,7 +34,9 @@ export default defineNuxtConfig({
       substrateChainName: process.env.NUXT_PUBLIC_SUBSTRATE_CHAIN_NAME || 'Paseo Asset Hub',
       substrateChainId: process.env.NUXT_PUBLIC_SUBSTRATE_CHAIN_ID || '420420417',
       substrateDappName: process.env.NUXT_PUBLIC_SUBSTRATE_DAPP_NAME || 'sk3tchy',
-      peopleChainWs: process.env.NUXT_PUBLIC_PEOPLE_CHAIN_WS || 'wss://previewnet.substrate.dev/people'
+      peopleChainWs: process.env.NUXT_PUBLIC_PEOPLE_CHAIN_WS
+        || process.env.NUXT_PUBLIC_STATEMENT_STORE_WS
+        || 'wss://pop3-testnet.parity-lab.parity.io/people'
     }
   }
 })
