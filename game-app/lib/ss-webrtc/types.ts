@@ -20,7 +20,17 @@ export interface LogEntry {
 }
 
 export type KeypairType = 'sr25519' | 'ed25519' | 'ecdsa'
-export type StatementStoreSigningMode = 'wallet' | 'ephemeral' | 'mnemonic' | 'spektr'
+export type StatementStoreSigningMode = 'wallet' | 'ephemeral' | 'mnemonic' | 'external'
+
+/**
+ * External signer — generic interface for host-injected wallets (e.g. Spektr).
+ * Keeps the core library agnostic to the specific wallet implementation.
+ */
+export interface ExternalSigner {
+  address: string
+  keyType?: KeypairType
+  sign: (hexPayload: string) => Promise<string>
+}
 
 /**
  * Provider configuration
@@ -38,10 +48,8 @@ export interface SSWebRTCConfig {
   signingMode?: StatementStoreSigningMode
   /** BIP39 mnemonic for mnemonic signing mode */
   mnemonic?: string
-  /** Spektr host signRaw function (for spektr signing mode) */
-  spektrSignRaw?: (hexMessage: string) => Promise<string>
-  /** Spektr host account address (for spektr signing mode) */
-  spektrAddress?: string
+  /** External signer for host-injected wallets (for 'external' signing mode) */
+  externalSigner?: ExternalSigner
   /** Optional display username */
   username?: string
   /** Override crypto type if the account is not sr25519 */

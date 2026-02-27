@@ -20,7 +20,7 @@ export interface BrowserWallet {
   sign: (message: Uint8Array | string) => Uint8Array
 }
 
-// Module-level cache so derivation happens once
+// Module-level cache so derivation happens once (singleton)
 let cachedWallet: BrowserWallet | null = null
 
 const wallet = ref<BrowserWallet | null>(null)
@@ -28,7 +28,15 @@ const username = ref('')
 const shortAddress = ref('')
 const initialized = ref(false)
 
-const spektr = useSpektr()
+// Lazy-init Spektr — deferred until first useBrowserKeys() call
+// inside a Vue component context, avoiding module-scope computed().
+let spektr: ReturnType<typeof useSpektr> | null = null
+function getSpektr() {
+  if (!spektr) {
+    spektr = useSpektr()
+  }
+  return spektr
+}
 
 function deriveWallet(mnemonic: string): BrowserWallet {
   const miniSecret = mnemonicToMiniSecret(mnemonic)
@@ -70,7 +78,7 @@ function init() {
   initialized.value = true
 
   // Also init Spektr (no-ops if not in iframe)
-  spektr.init()
+  getSpektr().init()
 }
 
 function setUsername(name: string) {
@@ -79,6 +87,7 @@ function setUsername(name: string) {
 }
 
 export function useBrowserKeys() {
+  const s = getSpektr()
   return {
     init,
     wallet,
@@ -86,10 +95,10 @@ export function useBrowserKeys() {
     shortAddress,
     initialized,
     setUsername,
-    isInHost: spektr.isInContainer,
-    spektrReady: spektr.isReady,
-    spektrAccount: spektr.selectedAccount,
-    spektrExtension: spektr.extension,
-    spektrSignRaw: spektr.signRaw,
+    isInHost: s.isInContainer,
+    spektrReady: s.isReady,
+    spektrInitFailed: s.initFailed,
+    spektrAccount: s.selectedAccount,
+    spektrSignRaw: s.signRaw,
   }
 }

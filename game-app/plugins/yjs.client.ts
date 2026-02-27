@@ -4,14 +4,14 @@ import { WebrtcProvider } from 'y-webrtc'
 import { IndexeddbPersistence } from 'y-indexeddb'
 import type { InjectedPolkadotAccount } from 'polkadot-api/pjs-signer'
 import { SSYjsProvider } from '~/lib/ss-yjs-provider'
-import { generatePeerId, type KeypairType } from '~/lib/ss-webrtc'
+import { generatePeerId, type KeypairType, type ExternalSigner } from '~/lib/ss-webrtc'
 
 export default defineNuxtPlugin(() => {
   const config = useRuntimeConfig()
-  
+
   console.log('[yjs] Runtime config:', config.public)
   console.log('[yjs] Signaling server from config:', config.public.signalingServer)
-  
+
   // factory that builds a Yjs room on demand
   function createYRoom(roomId: string, opts?: {
     signaling?: string[]
@@ -24,10 +24,9 @@ export default defineNuxtPlugin(() => {
     pollInterval?: number
     presenceTtl?: number
     keyType?: KeypairType
-    signingMode?: 'wallet' | 'ephemeral' | 'mnemonic' | 'spektr'
+    signingMode?: 'wallet' | 'ephemeral' | 'mnemonic' | 'external'
     mnemonic?: string
-    spektrSignRaw?: (hexMessage: string) => Promise<string>
-    spektrAddress?: string
+    externalSigner?: ExternalSigner
     turnKeyId?: string
     turnApiToken?: string
   }) {
@@ -43,9 +42,12 @@ export default defineNuxtPlugin(() => {
 
     if (mode === 'statement-store') {
       const account = opts?.account
-      const signingMode: 'wallet' | 'ephemeral' | 'mnemonic' | 'spektr' = opts?.signingMode || (opts?.mnemonic ? 'mnemonic' : (config.public.statementStoreSigningMode as 'wallet' | 'ephemeral' | 'mnemonic')) || 'ephemeral'
+      const signingMode = opts?.signingMode || (opts?.mnemonic ? 'mnemonic' : (config.public.statementStoreSigningMode as 'wallet' | 'ephemeral' | 'mnemonic')) || 'ephemeral'
       if (signingMode === 'wallet' && !account) {
         throw new Error('Statement-store wallet signing requires an injected Substrate account.')
+      }
+      if (signingMode === 'external' && !opts?.externalSigner) {
+        throw new Error('External signing mode requires an externalSigner with address and sign function.')
       }
 
       const endpoint = opts?.statementStoreEndpoint || (config.public.statementStoreWs as string)
@@ -68,8 +70,7 @@ export default defineNuxtPlugin(() => {
         keyType: opts?.keyType,
         signingMode,
         mnemonic: opts?.mnemonic,
-        spektrSignRaw: opts?.spektrSignRaw,
-        spektrAddress: opts?.spektrAddress,
+        externalSigner: opts?.externalSigner,
         pollInterval: opts?.pollInterval,
         presenceTtl: opts?.presenceTtl,
         turnKeyId: opts?.turnKeyId,
@@ -84,10 +85,10 @@ export default defineNuxtPlugin(() => {
         // Fallback disabled for cleaner logs during local testing
         // 'wss://signaling.yjs.dev',
       ]
-      
+
       console.log('[yjs] Using signaling servers:', signalingServers)
       console.log('[yjs] Creating WebrtcProvider for room:', roomId)
-      
+
       provider = new WebrtcProvider(roomId, doc, {
         signaling: signalingServers,
         peerOpts: {

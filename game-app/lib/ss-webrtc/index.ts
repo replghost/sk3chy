@@ -27,7 +27,8 @@ export type {
   OfferValue,
   AnswerValue,
   KeypairType,
-  StatementStoreSigningMode
+  StatementStoreSigningMode,
+  ExternalSigner
 } from './types'
 
 // Utility functions

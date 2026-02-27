@@ -20,7 +20,7 @@ import { sr25519CreateDerive } from '@polkadot-labs/hdkd'
 import { mnemonicToMiniSecret } from '@polkadot-labs/hdkd-helpers'
 
 import type { InjectedPolkadotAccount } from 'polkadot-api/pjs-signer'
-import type { ChannelValue, LogType, KeypairType, StatementStoreSigningMode } from './types'
+import type { ChannelValue, LogType, KeypairType, StatementStoreSigningMode, ExternalSigner } from './types'
 
 export interface StatementStoreConfig {
   endpoint: string
@@ -29,8 +29,7 @@ export interface StatementStoreConfig {
   keyType?: KeypairType
   signingMode?: StatementStoreSigningMode
   mnemonic?: string
-  spektrSignRaw?: (hexMessage: string) => Promise<string>
-  spektrAddress?: string
+  externalSigner?: ExternalSigner
   onLog?: (message: string, type: LogType) => void
 }
 
@@ -58,8 +57,7 @@ export class StatementStore {
   private documentId: string
   private account: InjectedPolkadotAccount | null
   private mnemonic: string | null
-  private spektrSignRaw: ((hexMessage: string) => Promise<string>) | null
-  private spektrAddress: string | null
+  private externalSigner: ExternalSigner | null
   private keyType: KeypairType
   private signingMode: StatementStoreSigningMode
   private onLog: (message: string, type: LogType) => void
@@ -74,8 +72,7 @@ export class StatementStore {
     this.documentId = config.documentId
     this.account = config.account ?? null
     this.mnemonic = config.mnemonic ?? null
-    this.spektrSignRaw = config.spektrSignRaw ?? null
-    this.spektrAddress = config.spektrAddress ?? null
+    this.externalSigner = config.externalSigner ?? null
     this.keyType = config.keyType || 'sr25519'
     this.signingMode = config.signingMode || (this.mnemonic ? 'mnemonic' : this.account ? 'wallet' : 'ephemeral')
     this.onLog = config.onLog || (() => {})
@@ -111,19 +108,19 @@ export class StatementStore {
       this.keyType = 'sr25519'
       sign = async (payload: Uint8Array) => sr25519Sign(pair.publicKey, pair.secretKey, payload)
       this.onLog('Using ephemeral signer for statement store (no wallet prompts)', 'info')
-    } else if (this.signingMode === 'spektr') {
-      if (!this.spektrSignRaw || !this.spektrAddress) {
-        throw new Error('Spektr signing requires spektrSignRaw and spektrAddress')
+    } else if (this.signingMode === 'external') {
+      if (!this.externalSigner) {
+        throw new Error('External signing mode requires an externalSigner')
       }
-      publicKey = decodeAddress(this.spektrAddress)
-      this.keyType = 'sr25519'
-      const signRaw = this.spektrSignRaw
+      publicKey = decodeAddress(this.externalSigner.address)
+      this.keyType = this.externalSigner.keyType || 'sr25519'
+      const extSign = this.externalSigner.sign
       sign = async (payload: Uint8Array) => {
         const hexPayload = u8aToHex(payload)
-        const hexSig = await signRaw(hexPayload)
+        const hexSig = await extSign(hexPayload)
         return hexToU8a(hexSig)
       }
-      this.onLog('Using Spektr host signer for statement store', 'info')
+      this.onLog('Using external signer for statement store', 'info')
     } else {
       if (!this.account) {
         throw new Error('Wallet signing selected but no account provided')

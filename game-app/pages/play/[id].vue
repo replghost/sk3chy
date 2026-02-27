@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
-import type { Ref } from 'vue'
 import { useRuntimeConfig } from '#app'
 import confetti from 'canvas-confetti'
 import YCanvas from '~/components/YCanvas.vue'
@@ -511,33 +510,46 @@ onMounted(async () => {
     displayName.value = keys.username.value
   }
 
-  if (keys.isInHost.value) {
-    // In Spektr host — wait for host wallet to be ready
-    const waitForSpektr = () => new Promise<void>((resolve) => {
-      if (keys.spektrReady.value) return resolve()
-      const stop = watch(keys.spektrReady as Ref<boolean>, (ready) => {
-        if (ready) { stop(); resolve() }
-      })
-    })
-    await waitForSpektr()
+  // Determine whether to use host (Spektr) or standalone (WebRTC) mode
+  let useHostMode = false
 
+  if (keys.isInHost.value) {
+    // In an iframe — attempt Spektr handshake with timeout
+    const spektrReady = await new Promise<boolean>((resolve) => {
+      if (keys.spektrReady.value) return resolve(true)
+      if (keys.spektrInitFailed.value) return resolve(false)
+      const timer = setTimeout(() => { stop(); resolve(false) }, 8000)
+      const stop = watch(
+        [keys.spektrReady, keys.spektrInitFailed],
+        ([ready, failed]) => {
+          if (ready || failed) { clearTimeout(timer); stop(); resolve(!!ready) }
+        }
+      )
+    })
+    useHostMode = spektrReady && !!keys.spektrAccount.value
+  }
+
+  if (useHostMode) {
+    const account = keys.spektrAccount.value!
     await start({
       signalingMode: 'statement-store',
       statementStoreEndpoint: config.public.statementStoreWs as string,
-      signingMode: 'spektr',
-      spektrSignRaw: keys.spektrSignRaw,
-      spektrAddress: keys.spektrAccount.value!.address,
+      signingMode: 'external',
+      externalSigner: {
+        address: account.address,
+        keyType: (account.type as 'sr25519' | 'ed25519' | 'ecdsa') || undefined,
+        sign: keys.spektrSignRaw,
+      },
       peerId: userId.value,
-      username: keys.spektrAccount.value!.name || keys.username.value || undefined,
+      username: account.name || keys.username.value || undefined,
       onLog: addLog,
     })
 
-    // Use Spektr account name as display name
-    if (keys.spektrAccount.value?.name) {
-      setDisplayName(keys.spektrAccount.value.name)
+    if (account.name) {
+      setDisplayName(account.name)
     }
   } else {
-    // Normal browser — WebRTC signaling with local wallet
+    // Normal browser (or Spektr handshake failed) — WebRTC signaling
     const iceServers: RTCIceServer[] = [
       { urls: 'stun:stun.l.google.com:19302' }
     ]
@@ -558,7 +570,6 @@ onMounted(async () => {
       onLog: addLog,
     })
 
-    // Now that yroom is ready, sync display name to awareness
     if (keys.username.value) {
       setDisplayName(keys.username.value)
     }

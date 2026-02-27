@@ -1,25 +1,24 @@
 // composables/useSpektr.ts
+//
+// Singleton composable — all callers share the same reactive state.
+// Must be called inside a Vue component context (or effectScope) on first use.
 import { ref, computed } from 'vue'
 import { injectSpektrExtension, SpektrExtensionName } from '@novasamatech/product-sdk'
 
-interface Account {
+export interface SpektrAccount {
   address: string
   name?: string
   type?: string
 }
 
-interface UseSpektrOptions {
-  debug?: boolean
-}
-
-export function useSpektr(options: UseSpektrOptions = { debug: false }) {
-  const { debug = false } = options
-  const log = debug ? console.log : () => {}
-
-  const accounts = ref<Account[]>([])
-  const selectedAccount = ref<Account | null>(null)
+export function useSpektr() {
+  const accounts = ref<SpektrAccount[]>([])
+  const selectedAccount = ref<SpektrAccount | null>(null)
   const isReady = ref(false)
+  const initFailed = ref(false)
   const extension = ref<any>(null)
+
+  let unsubscribeAccounts: (() => void) | null = null
 
   const isInContainer = computed(() => {
     if (typeof window === 'undefined') return false
@@ -30,14 +29,9 @@ export function useSpektr(options: UseSpektrOptions = { debug: false }) {
     if (typeof window === 'undefined') return
 
     try {
-      log('[Spektr] Initializing...')
-
       if (!isInContainer.value) {
-        log('[Spektr] Not in iframe, skipping initialization')
         return
       }
-
-      log('[Spektr] Calling injectSpektrExtension()...')
 
       // Retry logic for when parent is still loading
       let retries = 0
@@ -48,62 +42,63 @@ export function useSpektr(options: UseSpektrOptions = { debug: false }) {
         const ready = await injectSpektrExtension()
 
         if (ready) {
-          log('[Spektr] Handshake successful on attempt', retries + 1)
           break
         }
 
         retries++
         if (retries < maxRetries) {
-          log('[Spektr] Handshake failed, retrying...', retries, '/', maxRetries)
           await new Promise((resolve) => setTimeout(resolve, retryDelay))
         } else {
-          console.error('[Spektr] Failed to initialize after', maxRetries, 'attempts')
+          console.warn('[Spektr] Failed to initialize after', maxRetries, 'attempts')
+          initFailed.value = true
           return
         }
       }
 
       // Check if injected
       if (!window.injectedWeb3?.[SpektrExtensionName]) {
-        console.error('[Spektr] Extension not found after injection')
+        console.warn('[Spektr] Extension not found after injection')
+        initFailed.value = true
         return
       }
 
-      log('[Spektr] SDK injected successfully')
-
-      // Enable the extension (returns the actual extension object)
+      // Enable the extension
       const ext = await window.injectedWeb3[SpektrExtensionName].enable()
       extension.value = ext
 
-      log('[Spektr] Extension enabled')
-
-      // Subscribe to account changes
-      ext.accounts.subscribe((accs: any[]) => {
-        log('[Spektr] Accounts updated:', accs)
-        accounts.value = accs
-        selectedAccount.value = accs[0] || null
-      })
-
-      // Get initial accounts
+      // Get initial accounts first, then subscribe for updates
       const accs = await ext.accounts.get()
       accounts.value = accs
       selectedAccount.value = accs[0] || null
-      isReady.value = true
 
-      log('[Spektr] Initialized with accounts:', {
-        count: accs.length,
-        selected: selectedAccount.value?.address
+      // Only mark ready if we actually have accounts
+      if (accs.length > 0) {
+        isReady.value = true
+      }
+
+      // Subscribe to future account changes
+      unsubscribeAccounts = ext.accounts.subscribe((accs: any[]) => {
+        accounts.value = accs
+        selectedAccount.value = accs[0] || null
+        // Update readiness based on account availability
+        isReady.value = accs.length > 0
       })
     } catch (error) {
       console.error('[Spektr] Initialization error:', error)
+      initFailed.value = true
     }
   }
 
   function cleanup() {
     if (typeof window === 'undefined') return
 
+    unsubscribeAccounts?.()
+    unsubscribeAccounts = null
     accounts.value = []
     selectedAccount.value = null
     isReady.value = false
+    initFailed.value = false
+    extension.value = null
   }
 
   async function signRaw(hexMessage: string): Promise<string> {
@@ -111,22 +106,18 @@ export function useSpektr(options: UseSpektrOptions = { debug: false }) {
       throw new Error('Spektr not initialized or no account selected')
     }
 
-    try {
-      const result = await extension.value.signer.signRaw({
-        address: selectedAccount.value.address,
-        data: hexMessage,
-        type: 'bytes'
-      })
+    const result = await extension.value.signer.signRaw({
+      address: selectedAccount.value.address,
+      data: hexMessage,
+      type: 'bytes'
+    })
 
-      log('[Spektr] signRaw result:', result)
-
-      // Handle both formats: string or { signature: string }
-      const signature = typeof result === 'string' ? result : result.signature
-      return signature
-    } catch (error) {
-      console.error('[Spektr] Sign raw failed:', error)
-      throw error
+    // Handle both formats: string or { signature: string }
+    const signature = typeof result === 'string' ? result : result?.signature
+    if (!signature || typeof signature !== 'string') {
+      throw new Error(`[Spektr] signRaw returned unexpected result: ${JSON.stringify(result)}`)
     }
+    return signature
   }
 
   async function signPayload(payload: any): Promise<any> {
@@ -134,18 +125,10 @@ export function useSpektr(options: UseSpektrOptions = { debug: false }) {
       throw new Error('Spektr not initialized or no account selected')
     }
 
-    try {
-      const result = await extension.value.signer.signPayload(payload)
-
-      log('[Spektr] signPayload result:', result)
-
-      return {
-        signature: result.signature,
-        signedTransaction: result.signedTransaction
-      }
-    } catch (error) {
-      console.error('[Spektr] Sign payload failed:', error)
-      throw error
+    const result = await extension.value.signer.signPayload(payload)
+    return {
+      signature: result.signature,
+      signedTransaction: result.signedTransaction
     }
   }
 
@@ -153,6 +136,7 @@ export function useSpektr(options: UseSpektrOptions = { debug: false }) {
     accounts,
     selectedAccount,
     isReady,
+    initFailed,
     isInContainer,
     extension,
     init,
