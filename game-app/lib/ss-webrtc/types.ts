@@ -20,7 +20,7 @@ export interface LogEntry {
 }
 
 export type KeypairType = 'sr25519' | 'ed25519' | 'ecdsa'
-export type StatementStoreSigningMode = 'wallet' | 'ephemeral' | 'mnemonic'
+export type StatementStoreSigningMode = 'wallet' | 'ephemeral' | 'mnemonic' | 'spektr'
 
 /**
  * Provider configuration
@@ -38,6 +38,10 @@ export interface SSWebRTCConfig {
   signingMode?: StatementStoreSigningMode
   /** BIP39 mnemonic for mnemonic signing mode */
   mnemonic?: string
+  /** Spektr host signRaw function (for spektr signing mode) */
+  spektrSignRaw?: (hexMessage: string) => Promise<string>
+  /** Spektr host account address (for spektr signing mode) */
+  spektrAddress?: string
   /** Optional display username */
   username?: string
   /** Override crypto type if the account is not sr25519 */

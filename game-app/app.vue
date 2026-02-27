@@ -15,7 +15,10 @@ const showOnboarding = useState('showOnboarding', () => false)
 
 onMounted(() => {
   keys.init()
-  if (!keys.username.value) {
+  if (keys.isInHost.value) {
+    // In Spektr host — identity provided by host, skip onboarding
+    showOnboarding.value = false
+  } else if (!keys.username.value) {
     showOnboarding.value = true
   }
 })

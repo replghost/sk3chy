@@ -24,8 +24,10 @@ export default defineNuxtPlugin(() => {
     pollInterval?: number
     presenceTtl?: number
     keyType?: KeypairType
-    signingMode?: 'wallet' | 'ephemeral' | 'mnemonic'
+    signingMode?: 'wallet' | 'ephemeral' | 'mnemonic' | 'spektr'
     mnemonic?: string
+    spektrSignRaw?: (hexMessage: string) => Promise<string>
+    spektrAddress?: string
     turnKeyId?: string
     turnApiToken?: string
   }) {
@@ -41,7 +43,7 @@ export default defineNuxtPlugin(() => {
 
     if (mode === 'statement-store') {
       const account = opts?.account
-      const signingMode: 'wallet' | 'ephemeral' | 'mnemonic' = opts?.signingMode || (opts?.mnemonic ? 'mnemonic' : (config.public.statementStoreSigningMode as 'wallet' | 'ephemeral' | 'mnemonic')) || 'ephemeral'
+      const signingMode: 'wallet' | 'ephemeral' | 'mnemonic' | 'spektr' = opts?.signingMode || (opts?.mnemonic ? 'mnemonic' : (config.public.statementStoreSigningMode as 'wallet' | 'ephemeral' | 'mnemonic')) || 'ephemeral'
       if (signingMode === 'wallet' && !account) {
         throw new Error('Statement-store wallet signing requires an injected Substrate account.')
       }
@@ -66,6 +68,8 @@ export default defineNuxtPlugin(() => {
         keyType: opts?.keyType,
         signingMode,
         mnemonic: opts?.mnemonic,
+        spektrSignRaw: opts?.spektrSignRaw,
+        spektrAddress: opts?.spektrAddress,
         pollInterval: opts?.pollInterval,
         presenceTtl: opts?.presenceTtl,
         turnKeyId: opts?.turnKeyId,

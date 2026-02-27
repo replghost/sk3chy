@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
+import type { Ref } from 'vue'
 import { useRuntimeConfig } from '#app'
 import confetti from 'canvas-confetti'
 import YCanvas from '~/components/YCanvas.vue'
@@ -510,37 +511,57 @@ onMounted(async () => {
     displayName.value = keys.username.value
   }
 
-  // Build ICE servers
-  const iceServers: RTCIceServer[] = [
-    { urls: 'stun:stun.l.google.com:19302' }
-  ]
-  if (config.public.turnUsername && config.public.turnCredential) {
-    iceServers.push({
-      urls: [
-        'turn:a.relay.metered.ca:443',
-        'turn:a.relay.metered.ca:443?transport=tcp'
-      ],
-      username: config.public.turnUsername as string,
-      credential: config.public.turnCredential as string
+  if (keys.isInHost.value) {
+    // In Spektr host — wait for host wallet to be ready
+    const waitForSpektr = () => new Promise<void>((resolve) => {
+      if (keys.spektrReady.value) return resolve()
+      const stop = watch(keys.spektrReady as Ref<boolean>, (ready) => {
+        if (ready) { stop(); resolve() }
+      })
     })
-  }
+    await waitForSpektr()
 
-  await start({
-    signalingMode: 'webrtc',
-    iceServers,
-    onLog: addLog,
-    // TODO: switch back to statement-store when testnet is up
-    // signalingMode: 'statement-store',
-    // statementStoreEndpoint: config.public.statementStoreWs as string,
-    // signingMode: 'mnemonic',
-    // mnemonic: keys.wallet.value!.mnemonic,
-    // peerId: userId.value,
-    // username: keys.username.value || undefined
-  })
+    await start({
+      signalingMode: 'statement-store',
+      statementStoreEndpoint: config.public.statementStoreWs as string,
+      signingMode: 'spektr',
+      spektrSignRaw: keys.spektrSignRaw,
+      spektrAddress: keys.spektrAccount.value!.address,
+      peerId: userId.value,
+      username: keys.spektrAccount.value!.name || keys.username.value || undefined,
+      onLog: addLog,
+    })
 
-  // Now that yroom is ready, sync display name to awareness
-  if (keys.username.value) {
-    setDisplayName(keys.username.value)
+    // Use Spektr account name as display name
+    if (keys.spektrAccount.value?.name) {
+      setDisplayName(keys.spektrAccount.value.name)
+    }
+  } else {
+    // Normal browser — WebRTC signaling with local wallet
+    const iceServers: RTCIceServer[] = [
+      { urls: 'stun:stun.l.google.com:19302' }
+    ]
+    if (config.public.turnUsername && config.public.turnCredential) {
+      iceServers.push({
+        urls: [
+          'turn:a.relay.metered.ca:443',
+          'turn:a.relay.metered.ca:443?transport=tcp'
+        ],
+        username: config.public.turnUsername as string,
+        credential: config.public.turnCredential as string
+      })
+    }
+
+    await start({
+      signalingMode: 'webrtc',
+      iceServers,
+      onLog: addLog,
+    })
+
+    // Now that yroom is ready, sync display name to awareness
+    if (keys.username.value) {
+      setDisplayName(keys.username.value)
+    }
   }
 })
 </script>

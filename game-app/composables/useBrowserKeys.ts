@@ -6,6 +6,7 @@ import {
   validateMnemonic,
 } from '@polkadot-labs/hdkd-helpers'
 import { u8aToHex } from '@polkadot/util'
+import { useSpektr } from './useSpektr'
 
 const STORAGE_KEY_MNEMONIC = 'sk3tchy-mnemonic'
 const STORAGE_KEY_USERNAME = 'sk3tchy-username'
@@ -26,6 +27,8 @@ const wallet = ref<BrowserWallet | null>(null)
 const username = ref('')
 const shortAddress = ref('')
 const initialized = ref(false)
+
+const spektr = useSpektr()
 
 function deriveWallet(mnemonic: string): BrowserWallet {
   const miniSecret = mnemonicToMiniSecret(mnemonic)
@@ -65,6 +68,9 @@ function init() {
   wallet.value = cachedWallet
   shortAddress.value = cachedWallet.address.slice(0, 6) + '...' + cachedWallet.address.slice(-4)
   initialized.value = true
+
+  // Also init Spektr (no-ops if not in iframe)
+  spektr.init()
 }
 
 function setUsername(name: string) {
@@ -80,5 +86,10 @@ export function useBrowserKeys() {
     shortAddress,
     initialized,
     setUsername,
+    isInHost: spektr.isInContainer,
+    spektrReady: spektr.isReady,
+    spektrAccount: spektr.selectedAccount,
+    spektrExtension: spektr.extension,
+    spektrSignRaw: spektr.signRaw,
   }
 }

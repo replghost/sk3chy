@@ -29,6 +29,8 @@ export interface StatementStoreConfig {
   keyType?: KeypairType
   signingMode?: StatementStoreSigningMode
   mnemonic?: string
+  spektrSignRaw?: (hexMessage: string) => Promise<string>
+  spektrAddress?: string
   onLog?: (message: string, type: LogType) => void
 }
 
@@ -56,6 +58,8 @@ export class StatementStore {
   private documentId: string
   private account: InjectedPolkadotAccount | null
   private mnemonic: string | null
+  private spektrSignRaw: ((hexMessage: string) => Promise<string>) | null
+  private spektrAddress: string | null
   private keyType: KeypairType
   private signingMode: StatementStoreSigningMode
   private onLog: (message: string, type: LogType) => void
@@ -70,6 +74,8 @@ export class StatementStore {
     this.documentId = config.documentId
     this.account = config.account ?? null
     this.mnemonic = config.mnemonic ?? null
+    this.spektrSignRaw = config.spektrSignRaw ?? null
+    this.spektrAddress = config.spektrAddress ?? null
     this.keyType = config.keyType || 'sr25519'
     this.signingMode = config.signingMode || (this.mnemonic ? 'mnemonic' : this.account ? 'wallet' : 'ephemeral')
     this.onLog = config.onLog || (() => {})
@@ -105,6 +111,19 @@ export class StatementStore {
       this.keyType = 'sr25519'
       sign = async (payload: Uint8Array) => sr25519Sign(pair.publicKey, pair.secretKey, payload)
       this.onLog('Using ephemeral signer for statement store (no wallet prompts)', 'info')
+    } else if (this.signingMode === 'spektr') {
+      if (!this.spektrSignRaw || !this.spektrAddress) {
+        throw new Error('Spektr signing requires spektrSignRaw and spektrAddress')
+      }
+      publicKey = decodeAddress(this.spektrAddress)
+      this.keyType = 'sr25519'
+      const signRaw = this.spektrSignRaw
+      sign = async (payload: Uint8Array) => {
+        const hexPayload = u8aToHex(payload)
+        const hexSig = await signRaw(hexPayload)
+        return hexToU8a(hexSig)
+      }
+      this.onLog('Using Spektr host signer for statement store', 'info')
     } else {
       if (!this.account) {
         throw new Error('Wallet signing selected but no account provided')

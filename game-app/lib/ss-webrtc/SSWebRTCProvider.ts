@@ -68,6 +68,8 @@ export class SSWebRTCProvider {
       keyType: config.keyType,
       signingMode: config.signingMode,
       mnemonic: config.mnemonic,
+      spektrSignRaw: config.spektrSignRaw,
+      spektrAddress: config.spektrAddress,
       onLog
     })
 
