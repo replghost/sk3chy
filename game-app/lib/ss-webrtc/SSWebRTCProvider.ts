@@ -257,6 +257,18 @@ export class SSWebRTCProvider {
    */
   private handlePeerExpired(peerId: string): void {
     this.log(`Peer expired: ${peerId}`, 'warning')
+
+    // Don't tear down an active or in-progress WebRTC session due to transient
+    // presence heartbeat misses (common with background-tab timer throttling).
+    if (this.peerManager.isConnected(peerId)) {
+      this.log(`Ignoring presence expiry for connected peer: ${peerId}`, 'info')
+      return
+    }
+    if (this.connectingPeers.has(peerId)) {
+      this.log(`Ignoring presence expiry for connecting peer: ${peerId}`, 'info')
+      return
+    }
+
     this.connectingPeers.delete(peerId)
     const timer = this.retryTimers.get(peerId)
     if (timer) {
