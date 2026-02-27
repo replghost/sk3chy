@@ -174,6 +174,7 @@ const { addLog } = useLogger()
 
 const step = ref(1)
 const usernameInput = ref('')
+const claimInFlight = ref(false)
 const totalSteps = computed(() => props.requireOnChain ? 1 : 2)
 const requireOnChain = computed(() => props.requireOnChain)
 const registrationEndpoint = computed(() => {
@@ -185,7 +186,7 @@ const registrationEndpoint = computed(() => {
 const isValidFormat = computed(() => validateUsername(usernameInput.value).valid)
 
 const isRegistering = computed(() => {
-  return registration.status.value === 'registering' || registration.status.value === 'polling'
+  return claimInFlight.value || registration.status.value === 'registering' || registration.status.value === 'polling'
 })
 
 const inputColor = computed(() => {
@@ -228,16 +229,21 @@ function onUsernameInput() {
 }
 
 async function claimUsername() {
-  if (!keys.wallet.value?.mnemonic) return
+  if (claimInFlight.value || !keys.wallet.value?.mnemonic) return
+  claimInFlight.value = true
 
   addLog(`Claiming username: ${usernameInput.value}`, 'blockchain')
 
-  await registration.register(keys.wallet.value.mnemonic, usernameInput.value)
+  try {
+    await registration.register(keys.wallet.value.mnemonic, usernameInput.value)
 
-  if (registration.status.value === 'done' && registration.fullUsername.value) {
-    addLog(`Username registered: ${registration.fullUsername.value}`, 'success')
-    keys.setUsername(registration.fullUsername.value)
-    isOpen.value = false
+    if (registration.status.value === 'done' && registration.fullUsername.value) {
+      addLog(`Username registered: ${registration.fullUsername.value}`, 'success')
+      keys.setUsername(registration.fullUsername.value)
+      isOpen.value = false
+    }
+  } finally {
+    claimInFlight.value = false
   }
 }
 

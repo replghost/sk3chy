@@ -38,6 +38,7 @@ const isRegisteredForCurrentEndpoint = computed(() => {
 
 let checkTimeout: ReturnType<typeof setTimeout> | null = null
 let currentEndpoint = ''
+let registrationInFlight = false
 
 function resetProgress() {
   registrationProgress.value = 0
@@ -60,6 +61,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message = 'Timeout'): P
 
 export function useUsernameRegistration() {
   function init(endpoint?: string) {
+    registrationInFlight = false
     resetProgress()
     if (endpoint) {
       setEndpoint(endpoint)
@@ -122,6 +124,10 @@ export function useUsernameRegistration() {
    * Full registration flow: register on-chain -> poll -> save
    */
   async function register(mnemonic: string, username: string) {
+    if (registrationInFlight || status.value === 'registering' || status.value === 'polling') {
+      return
+    }
+
     const { valid, error } = validateUsername(username)
     if (!valid) {
       errorMessage.value = error || 'Invalid username'
@@ -129,6 +135,7 @@ export function useUsernameRegistration() {
       return
     }
 
+    registrationInFlight = true
     status.value = 'registering'
     errorMessage.value = ''
     registrationProgress.value = 4
@@ -180,6 +187,8 @@ export function useUsernameRegistration() {
         localStorage.setItem(STORAGE_KEY_FULL_USERNAME, fullUsername.value)
       }
       resetProgress()
+    } finally {
+      registrationInFlight = false
     }
   }
 
@@ -187,6 +196,7 @@ export function useUsernameRegistration() {
    * Use local-only mode (skip on-chain registration)
    */
   function useLocalOnly(username: string) {
+    registrationInFlight = false
     fullUsername.value = username
     localStorage.setItem(STORAGE_KEY_FULL_USERNAME, username)
     localStorage.removeItem(STORAGE_KEY_REGISTERED)
@@ -198,6 +208,7 @@ export function useUsernameRegistration() {
   }
 
   function reset() {
+    registrationInFlight = false
     status.value = 'idle'
     errorMessage.value = ''
     availabilityStatus.value = null
@@ -211,6 +222,7 @@ export function useUsernameRegistration() {
   }
 
   function clearChainRegistration() {
+    registrationInFlight = false
     chainRegistered.value = false
     registeredEndpoint.value = ''
     status.value = 'idle'

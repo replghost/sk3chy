@@ -378,8 +378,9 @@ export class StatementStore {
     const nowSec = Math.floor(Date.now() / 1000)
     const ttlSec = Math.max(Math.ceil((value as any).ttl ? (value as any).ttl / 1000 : 30), 5)
     const basePriority = (BigInt(nowSec + ttlSec) << BigInt(32)) | BigInt(Date.now() >>> 0)
+    const priorityStep = 1n << 32n
     const knownMin = this.channelMinPriority.get(channel) ?? 0n
-    const initialPriority = basePriority > knownMin ? basePriority : knownMin + 1n
+    const initialPriority = basePriority > knownMin ? basePriority : knownMin + priorityStep
 
     const fields: V2StatementFields = {
       expirationTimestamp: Number(initialPriority >> 32n),
@@ -401,33 +402,39 @@ export class StatementStore {
     const currentPriority = () =>
       (BigInt(fields.expirationTimestamp) << 32n) | BigInt(fields.sequenceNumber)
 
-    let result = await submit(fields) as any
-    let status = result?.status ?? result
+    let result: any = null
+    let status: any = null
+    const maxAttempts = 4
 
-    if (status === 'new' || status === 'known') {
-      this.channelMinPriority.set(channel, currentPriority())
-      this.onLog(`Written to ${channel.split('/').pop()}`, 'blockchain')
-      return { ok: true, allowLegacyFallback: false }
-    }
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      result = await submit(fields) as any
+      status = result?.status ?? result
 
-    if (result?.reason === 'channelPriorityTooLow' && result?.min_expiry !== undefined) {
-      try {
-        const minPriority = BigInt(String(result.min_expiry))
-        this.channelMinPriority.set(channel, minPriority)
-        const retryPriority = minPriority + 1n
-        fields.expirationTimestamp = Number(retryPriority >> 32n)
-        fields.sequenceNumber = Number(retryPriority & 0xffffffffn)
-        result = await submit(fields) as any
-        status = result?.status ?? result
-
-        if (status === 'new' || status === 'known') {
-          this.channelMinPriority.set(channel, currentPriority())
-          this.onLog(`Written to ${channel.split('/').pop()}`, 'blockchain')
-          return { ok: true, allowLegacyFallback: false }
-        }
-      } catch {
-        // Continue with standard error handling below.
+      if (status === 'new' || status === 'known') {
+        this.channelMinPriority.set(channel, currentPriority())
+        this.onLog(`Written to ${channel.split('/').pop()}`, 'blockchain')
+        return { ok: true, allowLegacyFallback: false }
       }
+
+      const reason = result?.reason ?? result?.value?.reason
+      if (reason !== 'channelPriorityTooLow') {
+        break
+      }
+
+      const minRaw = result?.min_expiry ?? result?.value?.min_expiry
+      let minPriority: bigint | null = null
+      if (minRaw !== undefined && minRaw !== null) {
+        try {
+          minPriority = BigInt(String(minRaw))
+          this.channelMinPriority.set(channel, minPriority)
+        } catch {
+          minPriority = null
+        }
+      }
+
+      const nextPriority = (minPriority ?? currentPriority()) + priorityStep
+      fields.expirationTimestamp = Number(nextPriority >> 32n)
+      fields.sequenceNumber = Number(nextPriority & 0xffffffffn)
     }
 
     // If endpoint expects legacy format, we can still fallback to legacy submit.

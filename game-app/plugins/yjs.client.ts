@@ -26,6 +26,8 @@ export default defineNuxtPlugin(() => {
     externalSigner?: ExternalSigner
     turnKeyId?: string
     turnApiToken?: string
+    turnUsername?: string
+    turnCredential?: string
     onLog?: (message: string, type: string) => void
   }) {
     const doc = new Y.Doc()
@@ -84,6 +86,8 @@ export default defineNuxtPlugin(() => {
         presenceTtl: opts?.presenceTtl,
         turnKeyId: opts?.turnKeyId,
         turnApiToken: opts?.turnApiToken,
+        turnUsername: opts?.turnUsername || (config.public.turnUsername as string) || '',
+        turnCredential: opts?.turnCredential || (config.public.turnCredential as string) || '',
         onLog: opts?.onLog as any,
       })
     }

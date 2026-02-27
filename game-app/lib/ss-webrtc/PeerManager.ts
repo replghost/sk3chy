@@ -341,25 +341,62 @@ export class PeerManager {
    */
   private waitForIceGathering(pc: RTCPeerConnection): Promise<string> {
     return new Promise((resolve, reject) => {
+      let resolved = false
+      let candidateCount = 0
+
+      const finish = (reason: string) => {
+        if (resolved) return
+        resolved = true
+        clearTimeout(quickTimeout)
+        clearTimeout(fullTimeout)
+        pc.removeEventListener('icegatheringstatechange', onGatheringState)
+        pc.removeEventListener('icecandidate', onIceCandidate)
+
+        const sdp = pc.localDescription?.sdp
+        if (!sdp) {
+          reject(new Error('ICE gathering failed - no local description'))
+          return
+        }
+
+        this.events.onLog(`ICE gathering finished (${reason}) with ${candidateCount} candidates`, 'info')
+        resolve(sdp)
+      }
+
+      // Already complete: return immediately.
       if (pc.iceGatheringState === 'complete') {
-        resolve(pc.localDescription?.sdp || '')
+        finish('already complete')
         return
       }
 
-      const timeout = setTimeout(() => {
-        pc.removeEventListener('icegatheringstatechange', checkState)
-        reject(new Error('ICE gathering timeout'))
+      // If we have candidates quickly, proceed without waiting full timeout.
+      const quickTimeout = setTimeout(() => {
+        if (candidateCount > 0) {
+          finish('quick timeout with candidates')
+        }
+      }, 3000)
+
+      // Full timeout fallback: send best-effort SDP instead of failing hard.
+      const fullTimeout = setTimeout(() => {
+        finish('full timeout')
       }, this.ICE_GATHERING_TIMEOUT)
 
-      const checkState = () => {
+      const onGatheringState = () => {
         if (pc.iceGatheringState === 'complete') {
-          clearTimeout(timeout)
-          pc.removeEventListener('icegatheringstatechange', checkState)
-          resolve(pc.localDescription?.sdp || '')
+          finish('gathering complete')
         }
       }
 
-      pc.addEventListener('icegatheringstatechange', checkState)
+      const onIceCandidate = (event: RTCPeerConnectionIceEvent) => {
+        if (event.candidate) {
+          candidateCount++
+          return
+        }
+        // Null candidate = end of gathering.
+        finish('null candidate')
+      }
+
+      pc.addEventListener('icegatheringstatechange', onGatheringState)
+      pc.addEventListener('icecandidate', onIceCandidate)
     })
   }
 

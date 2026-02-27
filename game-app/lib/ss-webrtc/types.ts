@@ -62,6 +62,10 @@ export interface SSWebRTCConfig {
   turnKeyId?: string
   /** Cloudflare TURN API token */
   turnApiToken?: string
+  /** Static TURN username (e.g. Metered) */
+  turnUsername?: string
+  /** Static TURN credential (e.g. Metered) */
+  turnCredential?: string
   /** Force TURN relay mode from first attempt (useful behind restrictive firewalls) */
   forceRelay?: boolean
   /** Callbacks */

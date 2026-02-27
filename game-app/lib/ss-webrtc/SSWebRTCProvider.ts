@@ -55,10 +55,12 @@ export class SSWebRTCProvider {
     const onLog = config.onLog || (() => {})
 
     // Initialize TURN credentials
-    this.turnCredentials = new TurnCredentials(
-      config.turnKeyId || (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_TURN_KEY_ID : '') || '',
-      config.turnApiToken || (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_TURN_API_TOKEN : '') || ''
-    )
+    this.turnCredentials = new TurnCredentials({
+      turnKeyId: config.turnKeyId || (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_TURN_KEY_ID : '') || '',
+      apiToken: config.turnApiToken || (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_TURN_API_TOKEN : '') || '',
+      turnUsername: config.turnUsername || '',
+      turnCredential: config.turnCredential || '',
+    })
 
     // Initialize statement store
     this.store = new StatementStore({

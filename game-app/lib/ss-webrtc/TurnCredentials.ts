@@ -14,15 +14,26 @@ interface CloudflareCredentialsResponse {
   iceServers: CloudflareIceServer[]
 }
 
+interface TurnCredentialsOptions {
+  turnKeyId?: string
+  apiToken?: string
+  turnUsername?: string
+  turnCredential?: string
+}
+
 export class TurnCredentials {
   private readonly turnKeyId: string
   private readonly apiToken: string
+  private readonly turnUsername: string
+  private readonly turnCredential: string
   private cachedCredentials: RTCIceServer[] | null = null
   private cacheExpiry: number = 0
 
-  constructor(turnKeyId: string, apiToken: string) {
-    this.turnKeyId = turnKeyId
-    this.apiToken = apiToken
+  constructor(options: TurnCredentialsOptions = {}) {
+    this.turnKeyId = options.turnKeyId || ''
+    this.apiToken = options.apiToken || ''
+    this.turnUsername = options.turnUsername || ''
+    this.turnCredential = options.turnCredential || ''
   }
 
   /**
@@ -36,9 +47,18 @@ export class TurnCredentials {
       return this.cachedCredentials
     }
 
-    // If no Cloudflare credentials configured, use public servers
+    // Prefer static TURN credentials when configured (e.g. Metered).
+    // This keeps statement-store mode aligned with y-webrtc ICE config.
+    if (this.turnUsername && this.turnCredential) {
+      const servers = this.getStaticTurnIceServers()
+      this.cachedCredentials = servers
+      this.cacheExpiry = now + 86400000
+      return servers
+    }
+
+    // If no Cloudflare credentials configured, fall back to STUN-only.
     if (!this.turnKeyId || !this.apiToken) {
-      return this.getPublicIceServers()
+      return this.getStunOnlyIceServers()
     }
 
     try {
@@ -73,22 +93,28 @@ export class TurnCredentials {
       return this.cachedCredentials
     } catch (error) {
       console.error('Failed to fetch Cloudflare TURN credentials:', error)
-      return this.getPublicIceServers()
+      return this.getStunOnlyIceServers()
     }
   }
 
-  /**
-   * Fallback public ICE servers
-   */
-  private getPublicIceServers(): RTCIceServer[] {
+  private getStunOnlyIceServers(): RTCIceServer[] {
     return [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
+    ]
+  }
+
+  private getStaticTurnIceServers(): RTCIceServer[] {
+    return [
+      { urls: 'stun:stun.l.google.com:19302' },
       {
-        urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
+        urls: [
+          'turn:a.relay.metered.ca:443',
+          'turn:a.relay.metered.ca:443?transport=tcp'
+        ],
+        username: this.turnUsername,
+        credential: this.turnCredential
       }
     ]
   }
