@@ -37,6 +37,24 @@ const spectators = computed(() => {
   return peers.value.filter(p => !ids.includes(p.id))
 })
 
+// Chain / endpoint options
+const CHAIN_OPTIONS = [
+  { label: 'PoP Stable', endpoint: 'wss://pop3-testnet.parity-lab.parity.io:443/7912' },
+  { label: 'PreviewNet', endpoint: 'wss://previewnet.substrate.dev/people' },
+]
+
+// Check URL for chain override, otherwise use config default
+const urlChain = typeof window !== 'undefined' ? new URL(window.location.href).searchParams.get('chain') : null
+const selectedEndpoint = ref(
+  urlChain || (config.public.statementStoreWs as string) || CHAIN_OPTIONS[0].endpoint
+)
+const connecting = ref(false)
+const connectionError = ref<string | null>(null)
+const selectedChainLabel = computed(() => {
+  const match = CHAIN_OPTIONS.find(c => c.endpoint === selectedEndpoint.value)
+  return match?.label || 'Custom'
+})
+
 const eraserActive = ref(false)
 const savedColor = ref('#FFFFFF')
 
@@ -502,70 +520,90 @@ onBeforeUnmount(() => {
   }
 })
 
-onMounted(async () => {
+function switchChain(endpoint: string) {
+  selectedEndpoint.value = endpoint
+  // Reload with the new endpoint — provider is bound at connect time
+  const url = new URL(window.location.href)
+  url.searchParams.set('chain', endpoint)
+  window.location.href = url.toString()
+}
+
+async function connectToChain(endpoint: string) {
+  connecting.value = true
+  connectionError.value = null
+
+  try {
+    // Determine whether to use host (Spektr) or standalone mode
+    let useHostMode = false
+
+    if (keys.isInHost.value) {
+      const spektrReady = await new Promise<boolean>((resolve) => {
+        if (keys.spektrReady.value) return resolve(true)
+        if (keys.spektrInitFailed.value) return resolve(false)
+        const timer = setTimeout(() => { stop(); resolve(false) }, 8000)
+        const stop = watch(
+          [keys.spektrReady, keys.spektrInitFailed],
+          ([ready, failed]) => {
+            if (ready || failed) { clearTimeout(timer); stop(); resolve(!!ready) }
+          }
+        )
+      })
+      useHostMode = spektrReady && !!keys.spektrAccount.value
+    }
+
+    // Both modes use statement-store signaling.
+    // Signing method differs: Spektr (external) vs local mnemonic.
+    if (useHostMode) {
+      const account = keys.spektrAccount.value!
+      await start({
+        signalingMode: 'statement-store',
+        statementStoreEndpoint: endpoint,
+        signingMode: 'external',
+        externalSigner: {
+          address: account.address,
+          keyType: (account.type as 'sr25519' | 'ed25519' | 'ecdsa') || undefined,
+          sign: keys.spektrSignRaw,
+        },
+        peerId: userId.value,
+        username: account.name || keys.username.value || undefined,
+        onLog: addLog,
+      })
+
+      if (account.name) {
+        setDisplayName(account.name)
+      }
+    } else {
+      await start({
+        signalingMode: 'statement-store',
+        statementStoreEndpoint: endpoint,
+        signingMode: 'mnemonic',
+        mnemonic: keys.wallet.value!.mnemonic,
+        peerId: userId.value,
+        username: keys.username.value || undefined,
+        onLog: addLog,
+      })
+
+      if (keys.username.value) {
+        setDisplayName(keys.username.value)
+      }
+    }
+  } catch (e: any) {
+    connectionError.value = e.message || 'Connection failed'
+  } finally {
+    connecting.value = false
+  }
+}
+
+onMounted(() => {
   keys.init()
 
-  // Pre-fill display name from stored username (set ref only — yroom not ready yet)
+  // Pre-fill display name from stored username
   if (keys.username.value) {
     displayName.value = keys.username.value
   }
 
-  // Determine whether to use host (Spektr) or standalone (WebRTC) mode
-  let useHostMode = false
-
-  if (keys.isInHost.value) {
-    // In an iframe — attempt Spektr handshake with timeout
-    const spektrReady = await new Promise<boolean>((resolve) => {
-      if (keys.spektrReady.value) return resolve(true)
-      if (keys.spektrInitFailed.value) return resolve(false)
-      const timer = setTimeout(() => { stop(); resolve(false) }, 8000)
-      const stop = watch(
-        [keys.spektrReady, keys.spektrInitFailed],
-        ([ready, failed]) => {
-          if (ready || failed) { clearTimeout(timer); stop(); resolve(!!ready) }
-        }
-      )
-    })
-    useHostMode = spektrReady && !!keys.spektrAccount.value
-  }
-
-  // Both host and standalone modes use statement-store signaling.
-  // The difference is the signing method: Spektr (external) vs local mnemonic.
-  if (useHostMode) {
-    const account = keys.spektrAccount.value!
-    await start({
-      signalingMode: 'statement-store',
-      statementStoreEndpoint: config.public.statementStoreWs as string,
-      signingMode: 'external',
-      externalSigner: {
-        address: account.address,
-        keyType: (account.type as 'sr25519' | 'ed25519' | 'ecdsa') || undefined,
-        sign: keys.spektrSignRaw,
-      },
-      peerId: userId.value,
-      username: account.name || keys.username.value || undefined,
-      onLog: addLog,
-    })
-
-    if (account.name) {
-      setDisplayName(account.name)
-    }
-  } else {
-    // Standalone browser — statement-store with mnemonic-derived signer
-    await start({
-      signalingMode: 'statement-store',
-      statementStoreEndpoint: config.public.statementStoreWs as string,
-      signingMode: 'mnemonic',
-      mnemonic: keys.wallet.value!.mnemonic,
-      peerId: userId.value,
-      username: keys.username.value || undefined,
-      onLog: addLog,
-    })
-
-    if (keys.username.value) {
-      setDisplayName(keys.username.value)
-    }
-  }
+  // Auto-connect to default chain
+  connectToChain(selectedEndpoint.value)
 })
 </script>
 
@@ -646,6 +684,25 @@ onMounted(async () => {
           <UIcon :name="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" class="w-3.5 h-3.5" />
           {{ linkCopied ? 'Copied!' : 'Copy invite' }}
         </button>
+      </div>
+
+      <!-- Top-right: Chain selector -->
+      <div class="absolute top-3 right-3 pointer-events-auto z-20">
+        <select
+          :value="selectedEndpoint"
+          @change="(e: Event) => switchChain((e.target as HTMLSelectElement).value)"
+          class="bg-black/50 backdrop-blur-md border border-white/10 rounded-full px-3 py-1.5 text-[10px] text-white/40 outline-none cursor-pointer hover:border-white/25 hover:text-white/60 transition-colors appearance-none pr-6"
+          :style="{ backgroundImage: `url('data:image/svg+xml;utf8,<svg fill=\\'%23666\\' viewBox=\\'0 0 20 20\\' xmlns=\\'http://www.w3.org/2000/svg\\'><path d=\\'M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z\\'/></svg>')`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', backgroundSize: '12px' }"
+        >
+          <option
+            v-for="chain in CHAIN_OPTIONS"
+            :key="chain.endpoint"
+            :value="chain.endpoint"
+            class="bg-black text-white"
+          >
+            {{ chain.label }}
+          </option>
+        </select>
       </div>
 
       <!-- Alone? Compact invite banner at top-center (doesn't block drawing) -->
@@ -771,11 +828,33 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- Loading state -->
+    <!-- Loading / connection error state -->
     <div v-else class="flex-1 flex items-center justify-center">
       <div class="text-center text-white/50">
-        <div class="animate-spin w-12 h-12 border-4 border-white/30 border-t-white rounded-full mx-auto mb-3"></div>
-        <p>Connecting...</p>
+        <template v-if="connectionError">
+          <p class="text-red-400 text-sm mb-2">{{ connectionError }}</p>
+          <div class="flex flex-col items-center gap-2">
+            <select
+              :value="selectedEndpoint"
+              @change="(e: Event) => switchChain((e.target as HTMLSelectElement).value)"
+              class="bg-white/5 border border-white/15 rounded-lg px-3 py-1.5 text-xs text-white/60 outline-none cursor-pointer"
+            >
+              <option v-for="chain in CHAIN_OPTIONS" :key="chain.endpoint" :value="chain.endpoint" class="bg-black text-white">
+                {{ chain.label }}
+              </option>
+            </select>
+            <button
+              @click="connectionError = null; connectToChain(selectedEndpoint)"
+              class="px-4 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs text-white/70 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </template>
+        <template v-else>
+          <div class="animate-spin w-12 h-12 border-4 border-white/30 border-t-white rounded-full mx-auto mb-3"></div>
+          <p>Connecting to {{ selectedChainLabel }}...</p>
+        </template>
       </div>
     </div>
   </div>
