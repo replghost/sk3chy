@@ -173,6 +173,14 @@ export function useUsernameRegistration() {
     localStorage.removeItem(STORAGE_KEY_REGISTERED_ENDPOINT)
   }
 
+  function clearChainRegistration() {
+    chainRegistered.value = false
+    registeredEndpoint.value = ''
+    status.value = 'idle'
+    localStorage.removeItem(STORAGE_KEY_REGISTERED)
+    localStorage.removeItem(STORAGE_KEY_REGISTERED_ENDPOINT)
+  }
+
   return {
     status,
     errorMessage,
@@ -186,6 +194,7 @@ export function useUsernameRegistration() {
     checkAvailability,
     register,
     useLocalOnly,
+    clearChainRegistration,
     reset,
   }
 }

@@ -180,7 +180,8 @@ export class SSWebRTCProvider {
       this.setStatus('connected', `Connected as ${this.peerId}`)
       this.log(`Connected to room: ${this.documentId}`, 'success')
     } catch (error) {
-      this.setStatus('disconnected', 'Connection failed')
+      const message = error instanceof Error ? error.message : String(error)
+      this.setStatus('disconnected', message || 'Connection failed')
       throw error
     }
   }

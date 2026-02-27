@@ -652,7 +652,16 @@ async function connectToChain(endpoint: string) {
       setDisplayName(preferredName)
     }
   } catch (e: any) {
-    connectionError.value = e.message || 'Connection failed'
+    const message = e?.message || 'Connection failed'
+    if (message.includes('statement-store allowance')) {
+      registration.clearChainRegistration()
+      onboardingRequireOnChain.value = true
+      onboardingChainEndpoint.value = endpoint
+      showOnboarding.value = true
+      connectionError.value = 'This account is not approved for statement-store writes on this chain. Register again for this endpoint.'
+    } else {
+      connectionError.value = message
+    }
   } finally {
     connecting.value = false
   }

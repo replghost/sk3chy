@@ -173,10 +173,11 @@ export function useDrawingGame(roomId: string) {
 
       const onStatus = (event: any) => {
         const status = event?.status || event
+        const message = event?.message || event?.reason
         if (status === 'connected') {
           finish(resolve)
         } else if (status === 'disconnected') {
-          finish(() => reject(new Error('Signaling provider disconnected during startup')))
+          finish(() => reject(new Error(message || 'Signaling provider disconnected during startup')))
         }
       }
 

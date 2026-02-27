@@ -198,13 +198,12 @@ export class StatementStore {
       }
       const miniSecret = mnemonicToMiniSecret(this.mnemonic)
       const derive = sr25519CreateDerive(miniSecret)
-      // Derive a unique keypair per session so multiple tabs don't collide
-      const sessionSuffix = Math.random().toString(36).substring(2, 10)
-      const keyPair = derive(`//signaling//${sessionSuffix}`)
+      // Must match the registered wallet identity that has statement allowance.
+      const keyPair = derive('//wallet')
       publicKey = keyPair.publicKey
       this.keyType = 'sr25519'
       sign = async (payload: Uint8Array) => keyPair.sign(payload)
-      this.onLog(`Using mnemonic-derived signer for statement store (session: ${sessionSuffix})`, 'info')
+      this.onLog('Using mnemonic wallet signer for statement store (//wallet)', 'info')
     } else if (this.signingMode === 'ephemeral') {
       await cryptoWaitReady()
       const seed = randomAsU8a(32)
@@ -333,6 +332,9 @@ export class StatementStore {
       return await this.writeLegacy(channel, value)
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error'
+      if (msg.includes('statement-store allowance')) {
+        throw new Error(msg)
+      }
       this.onLog(`Failed to write to ${channel}: ${msg}`, 'error')
       return false
     }
@@ -404,8 +406,7 @@ export class StatementStore {
     }
 
     if (serialized.includes('noAllowance')) {
-      this.onLog('Write rejected: account has no statement-store allowance on this chain', 'error')
-      return { ok: false, allowLegacyFallback: false }
+      throw new Error('account has no statement-store allowance on this chain')
     }
 
     this.onLog(`Write rejected: ${serialized}`, 'error')

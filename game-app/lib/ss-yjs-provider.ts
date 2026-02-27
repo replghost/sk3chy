@@ -39,7 +39,7 @@ export class SSYjsProvider {
       ...config,
       onStatus: (status, message) => {
         config.onStatus?.(status, message)
-        this.emit('status', { status })
+        this.emit('status', { status, message })
       },
       onPeerConnect: (peerId) => {
         config.onPeerConnect?.(peerId)
@@ -62,7 +62,7 @@ export class SSYjsProvider {
     void this.webrtc.connect().catch((error) => {
       const msg = error instanceof Error ? error.message : String(error)
       config.onLog?.(`SSWebRTC connect failed: ${msg}`, 'error')
-      this.emit('status', { status: 'disconnected' })
+      this.emit('status', { status: 'disconnected', message: msg })
     })
   }
 
