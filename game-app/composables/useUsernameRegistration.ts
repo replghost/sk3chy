@@ -5,7 +5,9 @@ import {
   pollForRegistration,
   validateUsername,
   deriveAttestationParamsRaw,
+  type UsernameRegistrationOptions,
 } from '~/lib/usernameRegistration'
+import type { RegistrationProgressUpdate } from '~/lib/blockchainClient'
 import { setEndpoint, disconnectBlockchainClient } from '~/lib/blockchainClient'
 
 type RegistrationStatus = 'idle' | 'checking' | 'registering' | 'polling' | 'done' | 'error'
@@ -22,6 +24,9 @@ const availabilityStatus = ref<AvailabilityStatus>(null)
 const fullUsername = ref('')
 const chainRegistered = ref(false)
 const registeredEndpoint = ref('')
+const registrationProgress = ref(0)
+const registrationProgressLabel = ref('')
+const registrationEtaSeconds = ref<number | null>(null)
 const isRegistered = computed(() => status.value === 'done' || !!fullUsername.value)
 const isChainRegistered = computed(() => chainRegistered.value)
 const isRegisteredForCurrentEndpoint = computed(() => {
@@ -34,6 +39,18 @@ const isRegisteredForCurrentEndpoint = computed(() => {
 let checkTimeout: ReturnType<typeof setTimeout> | null = null
 let currentEndpoint = ''
 
+function resetProgress() {
+  registrationProgress.value = 0
+  registrationProgressLabel.value = ''
+  registrationEtaSeconds.value = null
+}
+
+function applyProgress(progress: RegistrationProgressUpdate) {
+  registrationProgress.value = Math.max(registrationProgress.value, Math.min(100, progress.percent))
+  registrationProgressLabel.value = progress.label
+  registrationEtaSeconds.value = progress.etaSeconds ?? null
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number, message = 'Timeout'): Promise<T> {
   return Promise.race([
     promise,
@@ -43,6 +60,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message = 'Timeout'): P
 
 export function useUsernameRegistration() {
   function init(endpoint?: string) {
+    resetProgress()
     if (endpoint) {
       setEndpoint(endpoint)
       currentEndpoint = endpoint
@@ -113,18 +131,31 @@ export function useUsernameRegistration() {
 
     status.value = 'registering'
     errorMessage.value = ''
+    registrationProgress.value = 4
+    registrationProgressLabel.value = 'Preparing registration...'
+    registrationEtaSeconds.value = 60
 
     try {
-      const response = await registerUsername(mnemonic, username)
+      const options: UsernameRegistrationOptions = {
+        onProgress: (progress) => applyProgress(progress)
+      }
+      const response = await registerUsername(mnemonic, username, options)
       fullUsername.value = response.username
 
       // Poll for on-chain confirmation
       status.value = 'polling'
+      registrationProgress.value = Math.max(registrationProgress.value, 95)
+      registrationProgressLabel.value = 'Verifying username assignment...'
+      registrationEtaSeconds.value = 8
       const rawParams = await deriveAttestationParamsRaw(mnemonic, response.username)
       await pollForRegistration(
         response.username,
         rawParams.candidateAccountId,
-        30
+        30,
+        (attempt) => {
+          registrationProgress.value = Math.max(registrationProgress.value, 95 + Math.min(attempt, 4))
+          registrationEtaSeconds.value = Math.max(2, 8 - attempt * 2)
+        }
       )
 
       // Save to localStorage
@@ -135,6 +166,9 @@ export function useUsernameRegistration() {
         localStorage.setItem(STORAGE_KEY_REGISTERED_ENDPOINT, currentEndpoint)
         registeredEndpoint.value = currentEndpoint
       }
+      registrationProgress.value = 100
+      registrationProgressLabel.value = 'Registration complete'
+      registrationEtaSeconds.value = 0
       status.value = 'done'
     } catch (err) {
       console.error('Registration failed:', err)
@@ -145,6 +179,7 @@ export function useUsernameRegistration() {
       if (fullUsername.value) {
         localStorage.setItem(STORAGE_KEY_FULL_USERNAME, fullUsername.value)
       }
+      resetProgress()
     }
   }
 
@@ -159,6 +194,7 @@ export function useUsernameRegistration() {
     chainRegistered.value = false
     registeredEndpoint.value = ''
     status.value = 'done'
+    resetProgress()
   }
 
   function reset() {
@@ -171,6 +207,7 @@ export function useUsernameRegistration() {
     localStorage.removeItem(STORAGE_KEY_FULL_USERNAME)
     localStorage.removeItem(STORAGE_KEY_REGISTERED)
     localStorage.removeItem(STORAGE_KEY_REGISTERED_ENDPOINT)
+    resetProgress()
   }
 
   function clearChainRegistration() {
@@ -179,6 +216,7 @@ export function useUsernameRegistration() {
     status.value = 'idle'
     localStorage.removeItem(STORAGE_KEY_REGISTERED)
     localStorage.removeItem(STORAGE_KEY_REGISTERED_ENDPOINT)
+    resetProgress()
   }
 
   return {
@@ -186,6 +224,9 @@ export function useUsernameRegistration() {
     errorMessage,
     availabilityStatus,
     fullUsername,
+    registrationProgress,
+    registrationProgressLabel,
+    registrationEtaSeconds,
     isRegistered,
     isChainRegistered,
     isRegisteredForCurrentEndpoint,

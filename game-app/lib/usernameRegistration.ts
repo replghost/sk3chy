@@ -21,6 +21,7 @@ import {
   registerUserOnPreview,
   checkLitePersonExists,
   type AttestationParams,
+  type RegistrationProgressUpdate,
 } from "./blockchainClient";
 
 const REGISTER_SIGNATURE_MESSAGE_PREFIX = "pop:people-lite:register using";
@@ -58,6 +59,10 @@ export interface UsernameSearchResult {
   username: string;
   candidateAccountId: string;
   status?: string;
+}
+
+export interface UsernameRegistrationOptions {
+  onProgress?: (progress: RegistrationProgressUpdate) => void;
 }
 
 /**
@@ -180,7 +185,8 @@ function generateRandomDigits(length: number = 8): string {
  */
 export async function registerUsername(
   mnemonic: string,
-  username: string
+  username: string,
+  options?: UsernameRegistrationOptions
 ): Promise<UsernameResponse> {
   const digits = generateRandomDigits(2);
   const fullUsername = `${username}.${digits}`;
@@ -197,7 +203,11 @@ export async function registerUsername(
     username: fullUsername,
   };
 
-  const { txHash } = await registerUserOnPreview(attestationParams, rawParams.candidatePublicKey);
+  const { txHash } = await registerUserOnPreview(
+    attestationParams,
+    rawParams.candidatePublicKey,
+    { onProgress: options?.onProgress }
+  );
 
   return {
     base_username: rawParams.username,
@@ -222,13 +232,15 @@ export async function checkUsernameAvailability(
 export async function pollForRegistration(
   username: string,
   candidateAccountId: string,
-  maxAttempts: number = 60
+  maxAttempts: number = 60,
+  onAttempt?: (attempt: number, maxAttempts: number) => void
 ): Promise<UsernameSearchResult> {
   return new Promise((resolve, reject) => {
     let attempts = 0;
 
     const poll = async () => {
       attempts++;
+      onAttempt?.(attempts, maxAttempts);
 
       if (attempts > maxAttempts) {
         reject(

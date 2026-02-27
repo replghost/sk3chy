@@ -42,7 +42,7 @@
           @update:model-value="onUsernameInput"
         />
 
-        <div class="h-5 text-sm">
+        <div class="min-h-[20px] text-sm">
           <span v-if="usernameInput && !isValidFormat" class="text-red-500">
             Must be 7+ lowercase letters (a-z)
           </span>
@@ -58,6 +58,31 @@
           <span v-else-if="registration.errorMessage.value && registration.status.value !== 'error'" class="text-yellow-500 text-xs">
             {{ registration.errorMessage.value }}
           </span>
+        </div>
+
+        <div v-if="isRegistering" class="space-y-2 rounded-md bg-gray-100/70 dark:bg-gray-800/60 p-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-gray-700 dark:text-gray-300">
+              {{ registration.registrationProgressLabel.value || 'Processing registration...' }}
+            </span>
+            <span class="font-mono text-gray-500">
+              {{ Math.max(0, Math.min(100, Math.round(registration.registrationProgress.value || 0))) }}%
+            </span>
+          </div>
+          <div class="h-2 rounded bg-gray-300/70 dark:bg-gray-700 overflow-hidden">
+            <div
+              class="h-full bg-emerald-500 transition-all duration-500 ease-out"
+              :style="{ width: `${Math.max(4, Math.min(100, registration.registrationProgress.value || 0))}%` }"
+            />
+          </div>
+          <div class="text-[11px] text-gray-500">
+            <template v-if="registration.registrationEtaSeconds.value !== null && registration.registrationEtaSeconds.value > 0">
+              About {{ registration.registrationEtaSeconds.value }}s remaining
+            </template>
+            <template v-else>
+              Waiting for chain finalization...
+            </template>
+          </div>
         </div>
 
         <!-- Error state with fallback -->

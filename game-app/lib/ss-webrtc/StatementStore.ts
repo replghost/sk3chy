@@ -171,6 +171,7 @@ export class StatementStore {
   private supportsLegacyRead: boolean = false
   private subscriptionUnsub: (() => void) | null = null
   private statementCache: Map<string, ChannelValue> = new Map()
+  private channelMinPriority: Map<string, bigint> = new Map()
 
   constructor(config: StatementStoreConfig) {
     this.endpoint = config.endpoint
@@ -291,6 +292,7 @@ export class StatementStore {
     this.publicKey = null
     this.signRaw = null
     this.statementCache.clear()
+    this.channelMinPriority.clear()
   }
 
   /**
@@ -375,10 +377,13 @@ export class StatementStore {
     const data = new TextEncoder().encode(JSON.stringify(value))
     const nowSec = Math.floor(Date.now() / 1000)
     const ttlSec = Math.max(Math.ceil((value as any).ttl ? (value as any).ttl / 1000 : 30), 5)
+    const basePriority = (BigInt(nowSec + ttlSec) << BigInt(32)) | BigInt(Date.now() >>> 0)
+    const knownMin = this.channelMinPriority.get(channel) ?? 0n
+    const initialPriority = basePriority > knownMin ? basePriority : knownMin + 1n
 
     const fields: V2StatementFields = {
-      expirationTimestamp: nowSec + ttlSec,
-      sequenceNumber: Date.now() >>> 0,
+      expirationTimestamp: Number(initialPriority >> 32n),
+      sequenceNumber: Number(initialPriority & 0xffffffffn),
       decryptionKey: hexToU8a(stringToTopic(this.documentId)),
       channel: hexToU8a(stringToTopic(channel)),
       topic1: hexToU8a(stringToTopic('ss-webrtc')),
@@ -386,16 +391,43 @@ export class StatementStore {
       data
     }
 
-    const signatureMaterial = this.createSignatureMaterial(fields)
-    const signature = await this.signRaw(signatureMaterial)
-    const statement = this.createV2Statement(fields, this.publicKey, signature)
+    const submit = async (activeFields: V2StatementFields): Promise<any> => {
+      const signatureMaterial = this.createSignatureMaterial(activeFields)
+      const signature = await this.signRaw!(signatureMaterial)
+      const statement = this.createV2Statement(activeFields, this.publicKey!, signature)
+      return this.client!.request('statement_submit', [u8aToHex(statement)])
+    }
 
-    const result = await this.client.request('statement_submit', [u8aToHex(statement)]) as any
-    const status = result?.status ?? result
+    const currentPriority = () =>
+      (BigInt(fields.expirationTimestamp) << 32n) | BigInt(fields.sequenceNumber)
+
+    let result = await submit(fields) as any
+    let status = result?.status ?? result
 
     if (status === 'new' || status === 'known') {
+      this.channelMinPriority.set(channel, currentPriority())
       this.onLog(`Written to ${channel.split('/').pop()}`, 'blockchain')
       return { ok: true, allowLegacyFallback: false }
+    }
+
+    if (result?.reason === 'channelPriorityTooLow' && result?.min_expiry !== undefined) {
+      try {
+        const minPriority = BigInt(String(result.min_expiry))
+        this.channelMinPriority.set(channel, minPriority)
+        const retryPriority = minPriority + 1n
+        fields.expirationTimestamp = Number(retryPriority >> 32n)
+        fields.sequenceNumber = Number(retryPriority & 0xffffffffn)
+        result = await submit(fields) as any
+        status = result?.status ?? result
+
+        if (status === 'new' || status === 'known') {
+          this.channelMinPriority.set(channel, currentPriority())
+          this.onLog(`Written to ${channel.split('/').pop()}`, 'blockchain')
+          return { ok: true, allowLegacyFallback: false }
+        }
+      } catch {
+        // Continue with standard error handling below.
+      }
     }
 
     // If endpoint expects legacy format, we can still fallback to legacy submit.

@@ -255,11 +255,36 @@ export interface AttestationParams {
   username: string;
 }
 
+export interface RegistrationProgressUpdate {
+  stage:
+    | "preflight"
+    | "attestation_allowance"
+    | "attestation_submitting"
+    | "statement_allowance_submitting"
+    | "done";
+  label: string;
+  percent: number;
+  etaSeconds?: number;
+  detail?: string;
+}
+
+interface RegistrationProgressOptions {
+  onProgress?: (progress: RegistrationProgressUpdate) => void;
+}
+
+function emitProgress(
+  options: RegistrationProgressOptions | undefined,
+  progress: RegistrationProgressUpdate
+) {
+  options?.onProgress?.(progress);
+}
+
 /**
  * Register a LitePerson via attestation using Alice as the verifier
  */
 export async function registerLitePerson(
-  params: AttestationParams
+  params: AttestationParams,
+  options?: RegistrationProgressOptions
 ): Promise<string> {
   const { api } = await getBlockchainClient();
   const aliceSigner = createAliceSigner();
@@ -300,10 +325,38 @@ export async function registerLitePerson(
     const subscription = attestCall.signSubmitAndWatch(aliceSigner).subscribe({
       next: (event: any) => {
         console.log("Attestation event:", event.type);
+        if (event.type === "signed") {
+          emitProgress(options, {
+            stage: "attestation_submitting",
+            label: "Attestation signed, submitting to chain...",
+            percent: 28,
+            etaSeconds: 35,
+          });
+        } else if (event.type === "broadcasted") {
+          emitProgress(options, {
+            stage: "attestation_submitting",
+            label: "Attestation broadcasted, waiting for inclusion...",
+            percent: 38,
+            etaSeconds: 25,
+          });
+        } else if (event.type === "txBestBlocksState") {
+          emitProgress(options, {
+            stage: "attestation_submitting",
+            label: "Attestation included, waiting finalization...",
+            percent: 50,
+            etaSeconds: 15,
+          });
+        }
 
         if (event.type === "finalized") {
           if (event.ok) {
             console.log("Attestation successful, tx hash:", event.txHash);
+            emitProgress(options, {
+              stage: "attestation_submitting",
+              label: "Attestation finalized",
+              percent: 62,
+              etaSeconds: 12,
+            });
             subscription.unsubscribe();
             resolve(event.txHash);
           } else {
@@ -418,28 +471,73 @@ export async function grantAttestationAllowanceViaSudo(allowance: number = 1000)
  */
 export async function registerUserOnPreview(
   params: AttestationParams,
-  candidatePublicKey?: Uint8Array
+  candidatePublicKey?: Uint8Array,
+  options?: RegistrationProgressOptions
 ): Promise<{ txHash: string }> {
+  emitProgress(options, {
+    stage: "preflight",
+    label: "Preparing registration...",
+    percent: 8,
+    etaSeconds: 55,
+  });
+
   const requirements = await getUsernameRequirements();
   console.log("Username:", params.username, "length:", params.username.length);
   console.log("Requirements:", requirements);
+  emitProgress(options, {
+    stage: "preflight",
+    label: "Checking chain requirements...",
+    percent: 14,
+    etaSeconds: 50,
+  });
 
+  emitProgress(options, {
+    stage: "attestation_allowance",
+    label: "Checking attestation allowance...",
+    percent: 18,
+    etaSeconds: 45,
+  });
   let allowance = await checkAttestationAllowance();
   console.log("Current attestation allowance:", allowance);
 
   if (allowance === 0) {
     console.log("No attestation allowance, granting via sudo...");
+    emitProgress(options, {
+      stage: "attestation_allowance",
+      label: "Granting attestation allowance...",
+      percent: 24,
+      etaSeconds: 40,
+    });
     await grantAttestationAllowanceViaSudo(1000);
     allowance = await checkAttestationAllowance();
     console.log("New attestation allowance:", allowance);
   }
 
-  const txHash = await registerLitePerson(params);
+  emitProgress(options, {
+    stage: "attestation_submitting",
+    label: "Submitting attestation transaction...",
+    percent: 26,
+    etaSeconds: 35,
+  });
+  const txHash = await registerLitePerson(params, options);
 
   if (candidatePublicKey) {
     console.log("Granting statement store allowance to new user...");
-    await grantStatementAllowanceViaSudo(candidatePublicKey, 10, 20480);
+    emitProgress(options, {
+      stage: "statement_allowance_submitting",
+      label: "Submitting statement allowance transaction...",
+      percent: 66,
+      etaSeconds: 12,
+    });
+    await grantStatementAllowanceViaSudo(candidatePublicKey, 10, 20480, options);
   }
+
+  emitProgress(options, {
+    stage: "done",
+    label: "Registration complete",
+    percent: 100,
+    etaSeconds: 0,
+  });
 
   return { txHash };
 }
@@ -465,7 +563,8 @@ function buildStatementAllowanceStorageKey(accountId: Uint8Array): Uint8Array {
 export async function grantStatementAllowanceViaSudo(
   accountId: Uint8Array,
   statementCount: number = 10,
-  maxSizeBytes: number = 20480
+  maxSizeBytes: number = 20480,
+  options?: RegistrationProgressOptions
 ): Promise<string> {
   const { api } = await getBlockchainClient();
   const aliceSigner = createAliceSigner();
@@ -489,10 +588,38 @@ export async function grantStatementAllowanceViaSudo(
     const subscription = sudoCall.signSubmitAndWatch(aliceSigner).subscribe({
       next: (event: any) => {
         console.log("Statement allowance sudo event:", event.type);
+        if (event.type === "signed") {
+          emitProgress(options, {
+            stage: "statement_allowance_submitting",
+            label: "Statement allowance signed, submitting...",
+            percent: 74,
+            etaSeconds: 10,
+          });
+        } else if (event.type === "broadcasted") {
+          emitProgress(options, {
+            stage: "statement_allowance_submitting",
+            label: "Statement allowance broadcasted...",
+            percent: 84,
+            etaSeconds: 7,
+          });
+        } else if (event.type === "txBestBlocksState") {
+          emitProgress(options, {
+            stage: "statement_allowance_submitting",
+            label: "Statement allowance included, finalizing...",
+            percent: 94,
+            etaSeconds: 4,
+          });
+        }
 
         if (event.type === "finalized") {
           if (event.ok) {
             console.log("Statement allowance granted, tx hash:", event.txHash);
+            emitProgress(options, {
+              stage: "statement_allowance_submitting",
+              label: "Statement allowance finalized",
+              percent: 100,
+              etaSeconds: 0,
+            });
             subscription.unsubscribe();
             resolve(event.txHash);
           } else {
