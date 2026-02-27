@@ -170,9 +170,8 @@ watch(() => props.peers, renderAll, { deep: true })
 
 <template>
   <div
-    class="relative w-full overflow-hidden touch-none bg-black"
-    :class="fillContainer ? 'h-full' : 'border rounded-md'"
-    :style="fillContainer ? undefined : 'aspect-ratio: 16/9; max-height: 80vh;'"
+    class="relative overflow-hidden touch-none bg-black mx-auto"
+    :class="fillContainer ? 'w-full h-full' : 'border rounded-md canvas-constrained'"
   >
     <canvas ref="canvas"
       class="absolute inset-0 w-full h-full bg-black select-none"
@@ -188,3 +187,12 @@ watch(() => props.peers, renderAll, { deep: true })
     <canvas ref="overlay" class="absolute inset-0 w-full h-full pointer-events-none" />
   </div>
 </template>
+
+<style scoped>
+.canvas-constrained {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  max-height: 80vh;
+  max-width: min(100%, calc(80vh * 16 / 9));
+}
+</style>
