@@ -39,7 +39,7 @@ const spectators = computed(() => {
 
 // Chain / endpoint options
 const CHAIN_OPTIONS = [
-  { label: 'PoP Stable', endpoint: 'wss://pop3-testnet.parity-lab.parity.io:443/7912' },
+  { label: 'PoP People', endpoint: 'wss://pop3-testnet.parity-lab.parity.io/people' },
   { label: 'PreviewNet', endpoint: 'wss://previewnet.substrate.dev/people' },
 ]
 
@@ -543,6 +543,7 @@ async function connectToChain(endpoint: string) {
   try {
     // Determine whether to use host (Spektr) or standalone mode
     let useHostMode = false
+    let preferredName: string | undefined
 
     if (keys.isInHost.value) {
       const spektrReady = await new Promise<boolean>((resolve) => {
@@ -559,41 +560,76 @@ async function connectToChain(endpoint: string) {
       useHostMode = spektrReady && !!keys.spektrAccount.value
     }
 
-    // Both modes use statement-store signaling.
-    // Signing method differs: Spektr (external) vs local mnemonic.
-    if (useHostMode) {
-      const account = keys.spektrAccount.value!
+    const startWithWebrtcFallback = async () => {
+      const signalingServer = (config.public.signalingServer as string) || 'ws://localhost:4444'
+      const iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
+      if ((config.public.turnUsername as string) && (config.public.turnCredential as string)) {
+        iceServers.push({
+          urls: [
+            'turn:a.relay.metered.ca:443',
+            'turn:a.relay.metered.ca:443?transport=tcp'
+          ],
+          username: config.public.turnUsername as string,
+          credential: config.public.turnCredential as string
+        })
+      }
+
+      addLog(`Using y-webrtc signaling (${signalingServer})`, 'info')
       await start({
-        signalingMode: 'statement-store',
-        statementStoreEndpoint: endpoint,
-        signingMode: 'external',
-        externalSigner: {
-          address: account.address,
-          keyType: (account.type as 'sr25519' | 'ed25519' | 'ecdsa') || undefined,
-          sign: keys.spektrSignRaw,
-        },
+        signalingMode: 'webrtc',
+        signaling: [signalingServer],
+        iceServers,
         peerId: userId.value,
-        username: account.name || keys.username.value || undefined,
+        username: preferredName,
         onLog: addLog,
       })
+    }
 
-      if (account.name) {
-        setDisplayName(account.name)
-      }
+    const configuredMode = (config.public.signalingMode as string) || 'webrtc'
+    if (configuredMode !== 'statement-store') {
+      preferredName = (useHostMode ? keys.spektrAccount.value?.name : keys.username.value) || undefined
+      await startWithWebrtcFallback()
     } else {
-      await start({
-        signalingMode: 'statement-store',
-        statementStoreEndpoint: endpoint,
-        signingMode: 'mnemonic',
-        mnemonic: keys.wallet.value!.mnemonic,
-        peerId: userId.value,
-        username: keys.username.value || undefined,
-        onLog: addLog,
-      })
-
-      if (keys.username.value) {
-        setDisplayName(keys.username.value)
+      try {
+        // Both modes use statement-store signing identity.
+        // Signing method differs: Spektr (external) vs local mnemonic.
+        if (useHostMode) {
+          const account = keys.spektrAccount.value!
+          preferredName = account.name || keys.username.value || undefined
+          await start({
+            signalingMode: 'statement-store',
+            statementStoreEndpoint: endpoint,
+            signingMode: 'external',
+            externalSigner: {
+              address: account.address,
+              keyType: (account.type as 'sr25519' | 'ed25519' | 'ecdsa') || undefined,
+              sign: keys.spektrSignRaw,
+            },
+            peerId: userId.value,
+            username: preferredName,
+            onLog: addLog,
+          })
+        } else {
+          preferredName = keys.username.value || undefined
+          await start({
+            signalingMode: 'statement-store',
+            statementStoreEndpoint: endpoint,
+            signingMode: 'mnemonic',
+            mnemonic: keys.wallet.value!.mnemonic,
+            peerId: userId.value,
+            username: preferredName,
+            onLog: addLog,
+          })
+        }
+      } catch (error: any) {
+        const message = error?.message || 'Unknown error'
+        addLog(`Statement-store signaling failed: ${message}`, 'error')
+        throw new Error(message)
       }
+    }
+
+    if (preferredName) {
+      setDisplayName(preferredName)
     }
   } catch (e: any) {
     connectionError.value = e.message || 'Connection failed'

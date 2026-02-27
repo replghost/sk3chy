@@ -150,6 +150,47 @@ export function useDrawingGame(roomId: string) {
 
   // --- Election helpers ---
 
+  async function waitForProviderStartup(provider: any, timeoutMs = 6000): Promise<void> {
+    if (!provider || typeof provider.on !== 'function') return
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false
+      let timer: ReturnType<typeof setTimeout> | null = null
+
+      const cleanup = () => {
+        if (timer) clearTimeout(timer)
+        if (typeof provider.off === 'function') {
+          try { provider.off('status', onStatus) } catch {}
+        }
+      }
+
+      const finish = (fn: () => void) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        fn()
+      }
+
+      const onStatus = (event: any) => {
+        const status = event?.status || event
+        if (status === 'connected') {
+          finish(resolve)
+        } else if (status === 'disconnected') {
+          finish(() => reject(new Error('Signaling provider disconnected during startup')))
+        }
+      }
+
+      try {
+        provider.on('status', onStatus)
+      } catch {
+        finish(resolve)
+        return
+      }
+
+      timer = setTimeout(() => finish(resolve), timeoutMs)
+    })
+  }
+
   /** Read all election candidates from awareness for a given epoch */
   function getCandidatesFromAwareness(epoch: number): Array<{ id: string; at: number }> {
     const states = yroom.awareness.getStates()
@@ -214,7 +255,14 @@ export function useDrawingGame(roomId: string) {
   }
 
   async function start(roomOpts?: { signaling?: string[]; iceServers?: RTCIceServer[]; [key: string]: any }) {
+    // Recreate from scratch when reconnecting with another signaling backend.
+    if (yroom) {
+      try { yroom?.provider?.destroy?.() } catch {}
+      try { yroom?.doc?.destroy?.() } catch {}
+    }
+
     yroom = $createYRoom(roomId, roomOpts)
+    await waitForProviderStartup(yroom?.provider)
 
     addLog(`Joining room: ${roomId}`, 'info')
     console.log('[DrawingGame] Starting room:', roomId, 'User:', userId.value)

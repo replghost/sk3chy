@@ -18,7 +18,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       signalingMode: process.env.NUXT_PUBLIC_SIGNALING_MODE || 'statement-store',
-      statementStoreWs: process.env.NUXT_PUBLIC_STATEMENT_STORE_WS || 'wss://pop3-testnet.parity-lab.parity.io:443/7912',
+      signalingServer: process.env.NUXT_PUBLIC_SIGNALING_SERVER || 'ws://localhost:4444',
+      statementStoreWs: process.env.NUXT_PUBLIC_STATEMENT_STORE_WS || 'wss://pop3-testnet.parity-lab.parity.io/people',
       statementStoreSigningMode: process.env.NUXT_PUBLIC_STATEMENT_STORE_SIGNING || 'mnemonic',
       turnUsername: process.env.NUXT_PUBLIC_TURN_USERNAME || '',
       turnCredential: process.env.NUXT_PUBLIC_TURN_CREDENTIAL || '',
