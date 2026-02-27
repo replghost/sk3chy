@@ -13,7 +13,6 @@
   "dependencies": {
     "@noble/curves": "^2.0.1",
     "@nuxt/ui": "^2.18.7",
-    "@polkadot-api/descriptors": "file:.papi/descriptors",
     "@polkadot-api/polkadot-sdk-compat": "latest",
     "@polkadot-api/sdk-statement": "latest",
     "@polkadot-api/substrate-bindings": "latest",
