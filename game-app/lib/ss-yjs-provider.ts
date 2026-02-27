@@ -30,6 +30,7 @@ export class SSYjsProvider {
   private awarenessHandler:
     | ((changes: { added: number[]; updated: number[]; removed: number[] }, origin: any) => void)
     | null = null
+  private awarenessHeartbeat: ReturnType<typeof setInterval> | null = null
 
   constructor(roomId: string, doc: Y.Doc, config: SSYjsProviderConfig) {
     this.doc = doc
@@ -58,6 +59,7 @@ export class SSYjsProvider {
 
     this.bindDocUpdates()
     this.bindAwarenessUpdates()
+    this.startAwarenessHeartbeat()
 
     void this.webrtc.connect().catch((error) => {
       const msg = error instanceof Error ? error.message : String(error)
@@ -85,6 +87,10 @@ export class SSYjsProvider {
     if (this.awarenessHandler) {
       this.awareness.off('update', this.awarenessHandler)
       this.awarenessHandler = null
+    }
+    if (this.awarenessHeartbeat) {
+      clearInterval(this.awarenessHeartbeat)
+      this.awarenessHeartbeat = null
     }
 
     this.peers.clear()
@@ -220,5 +226,21 @@ export class SSYjsProvider {
     encoding.writeVarUint(encoder, MESSAGE_PEER_ID)
     encoding.writeVarUint(encoder, this.doc.clientID)
     this.send(peerId, encoding.toUint8Array(encoder))
+  }
+
+  private startAwarenessHeartbeat(): void {
+    if (this.awarenessHeartbeat) return
+
+    // Yjs awareness entries expire without periodic refresh.
+    // Broadcast local awareness regularly so peers keep us in their player list.
+    this.awarenessHeartbeat = setInterval(() => {
+      if (this.peers.size === 0) return
+
+      const update = awarenessProtocol.encodeAwarenessUpdate(this.awareness, [this.doc.clientID])
+      const encoder = encoding.createEncoder()
+      encoding.writeVarUint(encoder, MESSAGE_AWARENESS)
+      encoding.writeVarUint8Array(encoder, update)
+      this.broadcast(encoding.toUint8Array(encoder))
+    }, 10_000)
   }
 }
