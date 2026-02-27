@@ -18,7 +18,6 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       signalingMode: process.env.NUXT_PUBLIC_SIGNALING_MODE || 'statement-store',
-      signalingServer: process.env.NUXT_PUBLIC_SIGNALING_SERVER || 'ws://localhost:4444',
       statementStoreWs: process.env.NUXT_PUBLIC_STATEMENT_STORE_WS || 'wss://previewnet.substrate.dev/people',
       statementStoreSigningMode: process.env.NUXT_PUBLIC_STATEMENT_STORE_SIGNING || 'mnemonic',
       turnUsername: process.env.NUXT_PUBLIC_TURN_USERNAME || '',

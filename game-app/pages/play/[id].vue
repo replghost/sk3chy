@@ -529,6 +529,8 @@ onMounted(async () => {
     useHostMode = spektrReady && !!keys.spektrAccount.value
   }
 
+  // Both host and standalone modes use statement-store signaling.
+  // The difference is the signing method: Spektr (external) vs local mnemonic.
   if (useHostMode) {
     const account = keys.spektrAccount.value!
     await start({
@@ -549,24 +551,14 @@ onMounted(async () => {
       setDisplayName(account.name)
     }
   } else {
-    // Normal browser (or Spektr handshake failed) — WebRTC signaling
-    const iceServers: RTCIceServer[] = [
-      { urls: 'stun:stun.l.google.com:19302' }
-    ]
-    if (config.public.turnUsername && config.public.turnCredential) {
-      iceServers.push({
-        urls: [
-          'turn:a.relay.metered.ca:443',
-          'turn:a.relay.metered.ca:443?transport=tcp'
-        ],
-        username: config.public.turnUsername as string,
-        credential: config.public.turnCredential as string
-      })
-    }
-
+    // Standalone browser — statement-store with mnemonic-derived signer
     await start({
-      signalingMode: 'webrtc',
-      iceServers,
+      signalingMode: 'statement-store',
+      statementStoreEndpoint: config.public.statementStoreWs as string,
+      signingMode: 'mnemonic',
+      mnemonic: keys.wallet.value!.mnemonic,
+      peerId: userId.value,
+      username: keys.username.value || undefined,
       onLog: addLog,
     })
 
@@ -620,7 +612,7 @@ onMounted(async () => {
   <!-- Full-screen Lobby for Waiting State -->
   <div v-if="gameState.status === 'waiting'" class="fixed inset-0 bg-black z-30 flex flex-col">
     <!-- Canvas fills the screen -->
-    <div v-if="ready" class="flex-1 relative min-h-0">
+    <div v-if="ready" class="flex-1 relative min-h-0 m-2 rounded-xl border border-white/10 overflow-hidden">
       <YCanvas
         :strokes="lobbyStrokes"
         :peers="peers"
@@ -656,14 +648,14 @@ onMounted(async () => {
         </button>
       </div>
 
-      <!-- Alone? Big invite prompt overlaid on canvas -->
-      <div v-if="peers.length <= 1" class="absolute top-1/4 left-1/2 -translate-x-1/2 pointer-events-none z-10 text-center">
-        <p class="text-white/30 text-sm font-medium mb-2">No one else here yet</p>
+      <!-- Alone? Compact invite banner at top-center (doesn't block drawing) -->
+      <div v-if="peers.length <= 1" class="absolute top-3 left-1/2 -translate-x-1/2 pointer-events-auto z-20">
         <button
           @click="copyInviteLink"
-          class="pointer-events-auto px-5 py-2 bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 rounded-xl text-white/70 hover:text-white text-sm font-medium transition-all"
+          class="flex items-center gap-2 px-4 py-1.5 bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 rounded-full text-white/60 hover:text-white text-xs font-medium transition-all"
         >
-          Share link to invite friends
+          <UIcon :name="linkCopied ? 'i-heroicons-check' : 'i-heroicons-user-plus'" class="w-3.5 h-3.5" />
+          {{ linkCopied ? 'Copied!' : 'Invite friends — no one else here yet' }}
         </button>
       </div>
 
@@ -976,7 +968,7 @@ onMounted(async () => {
     </div>
 
     <!-- Canvas with overlay -->
-    <div v-if="gameState.status === 'playing' || gameState.status === 'finished' || gameState.status === 'roundEnd'" class="flex-1 relative min-h-0">
+    <div v-if="gameState.status === 'playing' || gameState.status === 'finished' || gameState.status === 'roundEnd'" class="flex-1 relative min-h-0 m-2 rounded-xl border border-white/10 overflow-hidden">
       <YCanvas
         ref="canvasRef"
         v-if="ready"
