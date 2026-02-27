@@ -29,7 +29,7 @@ type Guess = {
 }
 
 type GameState = {
-  status: 'waiting' | 'selecting' | 'playing' | 'finished'
+  status: 'waiting' | 'selecting' | 'playing' | 'roundEnd' | 'finished'
   hostId: string | null
   hostEpoch: number  // Monotonically increasing — prevents stale host claims
   hostSetAt: number | null  // Timestamp of last host assignment — detects stale IDB
@@ -47,6 +47,12 @@ type GameState = {
   commitmentVerified: boolean | null  // Verification result
   onChainGameId: number | null  // Blockchain game ID (shared by host)
   activePlayerIds: string[] | null  // Players who were in lobby when game started
+  // Multi-round fields
+  roundNumber: number          // Current round (1-indexed)
+  totalRounds: number          // = number of players at session start
+  scores: Record<string, { name: string; score: number }>  // userId → cumulative score
+  drawOrder: string[]          // Shuffled player IDs — who draws each round
+  drawerId: string | null      // Current round's drawer
 }
 
 // Generate a random bright color for each user
@@ -82,7 +88,12 @@ export function useDrawingGame(roomId: string) {
     winnerName: null,
     commitmentVerified: null,
     onChainGameId: null,
-    activePlayerIds: null
+    activePlayerIds: null,
+    roundNumber: 1,
+    totalRounds: 1,
+    scores: {},
+    drawOrder: [],
+    drawerId: null
   })
   const timeRemaining = ref(0)
   const electionInProgress = ref(false)
@@ -112,9 +123,12 @@ export function useDrawingGame(roomId: string) {
 
   // Check if current user is the host
   const isHost = computed(() => gameState.value.hostId === userId.value)
-  
-  // Check if current user can draw
-  const canDraw = computed(() => isHost.value && gameState.value.status === 'playing')
+
+  // Check if current user is the drawer for this round
+  const isDrawer = computed(() => gameState.value.drawerId === userId.value)
+
+  // Check if current user can draw (drawer during playing)
+  const canDraw = computed(() => isDrawer.value && gameState.value.status === 'playing')
   
   // Check if room is full
   const isRoomFull = computed(() => peers.value.length >= MAX_PLAYERS)
@@ -180,6 +194,7 @@ export function useDrawingGame(roomId: string) {
         yroom.game.set('hostId', candidateId)
         yroom.game.set('hostEpoch', claimEpoch)
         yroom.game.set('hostSetAt', Date.now())
+        yroom.game.set('drawerId', candidateId) // Host is initial drawer
         if (!yroom.game.get('status') || yroom.game.get('status') === 'finished') {
           yroom.game.set('status', 'waiting')
         }
@@ -258,8 +273,8 @@ export function useDrawingGame(roomId: string) {
     const guessArray = yroom.doc.getArray('guesses')
     const rebuildGuesses = () => { 
       guesses.value = guessArray.toArray()
-      // Only host can check for winners (they have the salt)
-      if (isHost.value && gameState.value.status === 'playing' && localSalt) {
+      // Only drawer can check for winners (they have the salt)
+      if (isDrawer.value && gameState.value.status === 'playing' && localSalt) {
         checkForWinner()
       }
     }
@@ -367,14 +382,19 @@ export function useDrawingGame(roomId: string) {
       winnerName: ygame.get('winnerName') || null,
       commitmentVerified: ygame.get('commitmentVerified') || null,
       onChainGameId: ygame.get('onChainGameId') || null,
-      activePlayerIds: ygame.get('activePlayerIds') || null
+      activePlayerIds: ygame.get('activePlayerIds') || null,
+      roundNumber: ygame.get('roundNumber') ?? 1,
+      totalRounds: ygame.get('totalRounds') ?? 1,
+      scores: ygame.get('scores') || {},
+      drawOrder: ygame.get('drawOrder') || [],
+      drawerId: ygame.get('drawerId') || null
     }
 
     // Sync hint letters from Yjs
     hintLetters.value = ygame.get('hintLetters') || []
 
     // Verify commitment when word is revealed (async, non-blocking)
-    if (gameState.value.status === 'finished' && gameState.value.selectedWord && gameState.value.wordSalt && !isVerifying) {
+    if ((gameState.value.status === 'finished' || gameState.value.status === 'roundEnd') && gameState.value.selectedWord && gameState.value.wordSalt && !isVerifying) {
       console.log('[DrawingGame] Game finished, verifying commitment...')
       isVerifying = true
       setTimeout(() => verifyCommitment(), 0) // Run async to avoid blocking
@@ -387,14 +407,14 @@ export function useDrawingGame(roomId: string) {
   }
 
   function generateWordOptions() {
-    if (!isHost.value) return
+    if (!isDrawer.value && !isHost.value) return
     const words = getRandomWords(gameState.value.difficulty, 3)
     yroom.game.set('wordOptions', words)
     yroom.game.set('status', 'selecting')
   }
 
   async function selectWord(word: string) {
-    if (!isHost.value) return
+    if (!isDrawer.value && !isHost.value) return
     
     // Generate random salt
     const salt = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
@@ -419,25 +439,62 @@ export function useDrawingGame(roomId: string) {
   }
 
   function startGame() {
-    if (!isHost.value || !localSelectedWord || !gameState.value.wordCommitment) return
-    addLog(`Game started (${gameState.value.duration}s, ${gameState.value.difficulty})`, 'success')
-    // Snapshot current players as active participants
-    const playerIds = peers.value.map(p => p.id)
-    yroom.doc.transact(() => {
-      yroom.game.set('status', 'playing')
-      yroom.game.set('startTime', Date.now())
-      yroom.game.set('activePlayerIds', playerIds)
-      // Clear previous game data + lobby doodles
-      yroom.strokes.delete(0, yroom.strokes.length)
-      const guessArray = yroom.doc.getArray('guesses')
-      guessArray.delete(0, guessArray.length)
-      const lobbyArray = yroom.doc.getArray('lobbyStrokes')
-      lobbyArray.delete(0, lobbyArray.length)
-    })
+    // Allow drawer (or host on round 1) to start
+    const canStart = (isDrawer.value || isHost.value) && localSelectedWord && gameState.value.wordCommitment
+    if (!canStart) return
+
+    const isFirstRound = !gameState.value.drawOrder || gameState.value.drawOrder.length === 0
+
+    if (isFirstRound) {
+      // Round 1: build draw order, init scores
+      const playerIds = peers.value.map(p => p.id)
+      // Shuffle draw order
+      const shuffled = [...playerIds]
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+      }
+      // Init scores for all players
+      const scores: Record<string, { name: string; score: number }> = {}
+      for (const pid of playerIds) {
+        const peer = peers.value.find(p => p.id === pid)
+        scores[pid] = { name: peer?.displayName || 'Anonymous', score: 0 }
+      }
+
+      addLog(`Game started — ${shuffled.length} rounds (${gameState.value.duration}s, ${gameState.value.difficulty})`, 'success')
+
+      yroom.doc.transact(() => {
+        yroom.game.set('status', 'playing')
+        yroom.game.set('startTime', Date.now())
+        yroom.game.set('activePlayerIds', playerIds)
+        yroom.game.set('drawOrder', shuffled)
+        yroom.game.set('totalRounds', shuffled.length)
+        yroom.game.set('roundNumber', 1)
+        yroom.game.set('drawerId', shuffled[0])
+        yroom.game.set('scores', scores)
+        // Clear previous game data + lobby doodles
+        yroom.strokes.delete(0, yroom.strokes.length)
+        const guessArray = yroom.doc.getArray('guesses')
+        guessArray.delete(0, guessArray.length)
+        const lobbyArray = yroom.doc.getArray('lobbyStrokes')
+        lobbyArray.delete(0, lobbyArray.length)
+      })
+    } else {
+      // Subsequent rounds: just start playing (drawOrder already set)
+      addLog(`Round ${gameState.value.roundNumber} started`, 'success')
+      yroom.doc.transact(() => {
+        yroom.game.set('status', 'playing')
+        yroom.game.set('startTime', Date.now())
+        // Clear strokes and guesses for new round
+        yroom.strokes.delete(0, yroom.strokes.length)
+        const guessArray = yroom.doc.getArray('guesses')
+        guessArray.delete(0, guessArray.length)
+      })
+    }
   }
 
   function updateHints() {
-    if (!isHost.value || !localSelectedWord || !gameState.value.startTime) return
+    if (!isDrawer.value || !localSelectedWord || !gameState.value.startTime) return
     const elapsed = Math.floor((Date.now() - gameState.value.startTime) / 1000)
     const hintsToShow = Math.floor(elapsed / 30)
     const wordLen = localSelectedWord.length
@@ -512,28 +569,111 @@ export function useDrawingGame(roomId: string) {
     }
   }
 
+  let roundEndTimer: ReturnType<typeof setTimeout> | null = null
+
   function endGame(winnerId: string | null, winnerName: string | null) {
-    console.log('[DrawingGame] endGame called. winnerId:', winnerId, 'isHost:', isHost.value, 'localWord:', localSelectedWord, 'localSalt:', localSalt?.substring(0, 10))
-    
+    console.log('[DrawingGame] endGame called. winnerId:', winnerId, 'isDrawer:', isDrawer.value, 'localWord:', localSelectedWord, 'localSalt:', localSalt?.substring(0, 10))
+
+    if (!isDrawer.value && !isHost.value) {
+      console.log('[DrawingGame] Not drawer or host, cannot end game')
+      return
+    }
+
     if (timerInterval) {
       clearInterval(timerInterval)
       timerInterval = null
     }
-    
-    if (isHost.value) {
-      console.log('[DrawingGame] Host ending game, revealing word and salt')
-      // Reveal phase: broadcast the word and salt so everyone can verify
-      yroom.doc.transact(() => {
-        yroom.game.set('status', 'finished')
-        yroom.game.set('endTime', Date.now()) // Record when game ended
-        yroom.game.set('winnerId', winnerId)
-        yroom.game.set('winnerName', winnerName)
-        yroom.game.set('selectedWord', localSelectedWord) // Reveal the word
-        yroom.game.set('wordSalt', localSalt) // Reveal the salt
-      })
-    } else {
-      console.log('[DrawingGame] Not host, cannot end game')
+
+    // Update scores
+    const currentScores = { ...(yroom.game.get('scores') || {}) }
+    const drawerId = gameState.value.drawerId
+    if (winnerId) {
+      // Guesser gets 3 points
+      if (currentScores[winnerId]) {
+        currentScores[winnerId] = { ...currentScores[winnerId], score: currentScores[winnerId].score + 3 }
+      }
+      // Drawer gets 1 point when someone guesses correctly
+      if (drawerId && currentScores[drawerId]) {
+        currentScores[drawerId] = { ...currentScores[drawerId], score: currentScores[drawerId].score + 1 }
+      }
     }
+
+    const roundNumber = gameState.value.roundNumber
+    const totalRounds = gameState.value.totalRounds
+    const isLastRound = roundNumber >= totalRounds
+
+    console.log(`[DrawingGame] Round ${roundNumber}/${totalRounds}, isLastRound: ${isLastRound}`)
+
+    yroom.doc.transact(() => {
+      yroom.game.set('endTime', Date.now())
+      yroom.game.set('winnerId', winnerId)
+      yroom.game.set('winnerName', winnerName)
+      yroom.game.set('selectedWord', localSelectedWord)
+      yroom.game.set('wordSalt', localSalt)
+      yroom.game.set('scores', currentScores)
+
+      if (isLastRound) {
+        // Final round — go to finished
+        yroom.game.set('status', 'finished')
+      } else {
+        // More rounds — go to roundEnd
+        yroom.game.set('status', 'roundEnd')
+      }
+    })
+
+    // Auto-advance after roundEnd (only host triggers to avoid double-fire)
+    if (!isLastRound && isHost.value) {
+      roundEndTimer = setTimeout(() => {
+        advanceRound()
+      }, 5000)
+    }
+  }
+
+  function advanceRound() {
+    if (!isHost.value) return
+
+    const drawOrder = gameState.value.drawOrder
+    const nextRound = gameState.value.roundNumber + 1
+    if (nextRound > gameState.value.totalRounds) return
+
+    const nextDrawerId = drawOrder[nextRound - 1] // 0-indexed
+
+    // Clear local state for the new round
+    localSelectedWord = null
+    localSalt = null
+    isVerifying = false
+    lastHintCount = 0
+
+    addLog(`Round ${nextRound} — ${getPlayerName(nextDrawerId)} is drawing`, 'info')
+
+    // Generate new word options for the next drawer
+    const words = getRandomWords(gameState.value.difficulty, 3)
+
+    yroom.doc.transact(() => {
+      yroom.game.set('roundNumber', nextRound)
+      yroom.game.set('drawerId', nextDrawerId)
+      yroom.game.set('selectedWord', null)
+      yroom.game.set('wordCommitment', null)
+      yroom.game.set('wordSalt', null)
+      yroom.game.set('wordLength', null)
+      yroom.game.set('wordOptions', words)
+      yroom.game.set('winnerId', null)
+      yroom.game.set('winnerName', null)
+      yroom.game.set('commitmentVerified', null)
+      yroom.game.set('hintLetters', null)
+      yroom.game.set('startTime', null)
+      yroom.game.set('endTime', null)
+      yroom.game.set('status', 'selecting')
+      // Clear strokes and guesses for new round
+      yroom.strokes.delete(0, yroom.strokes.length)
+      const guessArray = yroom.doc.getArray('guesses')
+      guessArray.delete(0, guessArray.length)
+    })
+  }
+
+  function getPlayerName(playerId: string): string {
+    const peer = peers.value.find(p => p.id === playerId)
+    return peer?.displayName || 'Anonymous'
   }
 
   async function verifyCommitment() {
@@ -546,13 +686,14 @@ export function useDrawingGame(roomId: string) {
     // Check if it matches the original commitment
     const verified = recomputedHash === wordCommitment
     
-    // Store verification result
-    if (isHost.value) {
+    // Store verification result (drawer or host can set this)
+    if (isDrawer.value || isHost.value) {
       yroom.game.set('commitmentVerified', verified)
     }
     
     gameState.value.commitmentVerified = verified
     addLog(`Commitment verification: ${verified ? 'passed' : 'FAILED'}`, verified ? 'success' : 'error')
+    isVerifying = false
   }
 
   async function requestNewGame(): Promise<void> {
@@ -560,11 +701,16 @@ export function useDrawingGame(roomId: string) {
       clearInterval(timerInterval)
       timerInterval = null
     }
+    if (roundEndTimer) {
+      clearTimeout(roundEndTimer)
+      roundEndTimer = null
+    }
 
     // Clear local state
     localSelectedWord = null
     localSalt = null
     isVerifying = false
+    lastHintCount = 0
 
     const currentEpoch = (yroom.game.get('hostEpoch') as number | null) ?? 0
 
@@ -585,6 +731,12 @@ export function useDrawingGame(roomId: string) {
       yroom.game.set('commitmentVerified', null)
       yroom.game.set('hintLetters', null)
       yroom.game.set('activePlayerIds', null)
+      // Reset multi-round fields
+      yroom.game.set('roundNumber', 1)
+      yroom.game.set('totalRounds', 1)
+      yroom.game.set('scores', {})
+      yroom.game.set('drawOrder', [])
+      yroom.game.set('drawerId', null)
       yroom.strokes.delete(0, yroom.strokes.length)
       const guessArray = yroom.doc.getArray('guesses')
       guessArray.delete(0, guessArray.length)
@@ -631,7 +783,7 @@ export function useDrawingGame(roomId: string) {
   }
 
   function sendGuess(text: string) {
-    if (!text.trim() || gameState.value.status !== 'playing' || isSpectator.value) return
+    if (!text.trim() || gameState.value.status !== 'playing' || isSpectator.value || isDrawer.value) return
     const guess: Guess = {
       id: nanoid(),
       by: userId.value,
@@ -684,7 +836,7 @@ export function useDrawingGame(roomId: string) {
   }
 
   function clearCanvas() {
-    if (!isHost.value) return
+    if (!isDrawer.value && !isHost.value) return
     yroom.doc.transact(() => {
       yroom.strokes.delete(0, yroom.strokes.length)
     })
@@ -705,6 +857,10 @@ export function useDrawingGame(roomId: string) {
       clearInterval(timerInterval)
       timerInterval = null
     }
+    if (roundEndTimer) {
+      clearTimeout(roundEndTimer)
+      roundEndTimer = null
+    }
     if (awarenessInterval) {
       clearInterval(awarenessInterval)
       awarenessInterval = null
@@ -720,7 +876,7 @@ export function useDrawingGame(roomId: string) {
   return {
     // state
     ready, strokes, lobbyStrokes, peers, guesses, brushColor, brushSize, userId, displayName,
-    isHost, canDraw, gameState, timeRemaining, isRoomFull, canJoin, isSpectator, hintLetters,
+    isHost, isDrawer, canDraw, gameState, timeRemaining, isRoomFull, canJoin, isSpectator, hintLetters,
     electionInProgress,
     // constants
     maxPlayers: MAX_PLAYERS,
@@ -728,6 +884,7 @@ export function useDrawingGame(roomId: string) {
     start, addPoint, commitStroke, setCursor, setDisplayName, setWalletAddress, sendGuess,
     undoStroke, clearCanvas, addLobbyPoint, commitLobbyStroke, clearLobbyStrokes,
     generateWordOptions, selectWord, startGame, requestNewGame, resetGame: requestNewGame, setDifficulty, setDuration,
+    advanceRound,
     // yroom access for SIWE
     getYRoom: () => yroom
   }

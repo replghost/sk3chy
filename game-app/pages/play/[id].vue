@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { useRuntimeConfig } from '#app'
 import confetti from 'canvas-confetti'
 import YCanvas from '~/components/YCanvas.vue'
@@ -17,11 +17,12 @@ const { addLog } = useLogger()
 
 const {
   ready, strokes, lobbyStrokes, peers, guesses, brushColor, brushSize, userId, displayName,
-  isHost, canDraw, gameState, timeRemaining, isRoomFull, canJoin, isSpectator, hintLetters,
+  isHost, isDrawer, canDraw, gameState, timeRemaining, isRoomFull, canJoin, isSpectator, hintLetters,
   maxPlayers, electionInProgress,
   start, addPoint, commitStroke, setCursor, setDisplayName, sendGuess,
   undoStroke, clearCanvas, addLobbyPoint, commitLobbyStroke, clearLobbyStrokes,
-  generateWordOptions, selectWord, startGame, requestNewGame, setDifficulty, setDuration
+  generateWordOptions, selectWord, startGame, requestNewGame, setDifficulty, setDuration,
+  advanceRound
 } = useDrawingGame(roomId)
 
 // Split peers into active players and spectators
@@ -63,7 +64,6 @@ const canvasRef = ref<any>(null)
 const exportedImageUrl = ref<string | null>(null)
 const showFinishModal = ref(false)
 const linkCopied = ref(false)
-const lobbyPlayersOpen = ref(false)
 
 async function handleNewGame() {
   selectedWordLocal.value = null
@@ -121,6 +121,40 @@ const formattedTime = computed(() => {
 
 // Show countdown warning in last 10 seconds
 const showCountdownWarning = computed(() => timeRemaining.value <= 10 && timeRemaining.value > 0)
+
+// Multi-round helpers
+const isMultiRound = computed(() => gameState.value.totalRounds > 1)
+const sortedScores = computed(() => {
+  const scores = gameState.value.scores || {}
+  return Object.entries(scores)
+    .map(([id, data]) => ({ id, name: data.name, score: data.score }))
+    .sort((a, b) => b.score - a.score)
+})
+const currentDrawerName = computed(() => {
+  const did = gameState.value.drawerId
+  if (!did) return 'Unknown'
+  const peer = peers.value.find(p => p.id === did)
+  return peer?.displayName || 'Anonymous'
+})
+const nextDrawerName = computed(() => {
+  const drawOrder = gameState.value.drawOrder
+  const nextIndex = gameState.value.roundNumber // 0-indexed next = current roundNumber
+  if (!drawOrder || nextIndex >= drawOrder.length) return null
+  const nextId = drawOrder[nextIndex]
+  const peer = peers.value.find(p => p.id === nextId)
+  return peer?.displayName || 'Anonymous'
+})
+const sessionWinner = computed(() => {
+  const scores = sortedScores.value
+  if (!scores.length) return null
+  // No winner if top two are tied
+  if (scores.length > 1 && scores[0].score === scores[1].score) return null
+  return scores[0]
+})
+
+// Round-end countdown
+const roundEndCountdown = ref(5)
+let roundEndInterval: ReturnType<typeof setInterval> | null = null
 
 // Calculate actual game duration (from start to end)
 const actualDuration = computed(() => {
@@ -402,11 +436,34 @@ watch(() => gameState.value.status, (newStatus, oldStatus) => {
     showFinishModal.value = false
     exportedImageUrl.value = null
   }
+
+  // Clear stale word selection for new rounds
+  if (newStatus === 'selecting') {
+    selectedWordLocal.value = null
+  }
+
+  // Round-end countdown
+  if (newStatus === 'roundEnd') {
+    roundEndCountdown.value = 5
+    if (roundEndInterval) clearInterval(roundEndInterval)
+    roundEndInterval = setInterval(() => {
+      roundEndCountdown.value = Math.max(0, roundEndCountdown.value - 1)
+      if (roundEndCountdown.value <= 0) {
+        if (roundEndInterval) clearInterval(roundEndInterval)
+        roundEndInterval = null
+      }
+    }, 1000)
+  } else if (oldStatus === 'roundEnd') {
+    if (roundEndInterval) {
+      clearInterval(roundEndInterval)
+      roundEndInterval = null
+    }
+  }
 }, { immediate: true })
 
 // Trigger confetti when someone wins
 watch(() => gameState.value.winnerId, (newWinnerId, oldWinnerId) => {
-  if (newWinnerId && !oldWinnerId && gameState.value.status === 'finished') {
+  if (newWinnerId && !oldWinnerId && (gameState.value.status === 'finished' || gameState.value.status === 'roundEnd')) {
     const duration = 3000
     const end = Date.now() + duration
 
@@ -435,6 +492,13 @@ watch(() => gameState.value.winnerId, (newWinnerId, oldWinnerId) => {
       }
     }
     frame()
+  }
+})
+
+onBeforeUnmount(() => {
+  if (roundEndInterval) {
+    clearInterval(roundEndInterval)
+    roundEndInterval = null
   }
 })
 
@@ -485,186 +549,200 @@ onMounted(async () => {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+@keyframes fade-in-letter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-letter {
+  opacity: 0;
+  animation: fade-in-letter 0.3s ease forwards;
+}
+
+@keyframes glow {
+  0%, 100% { text-shadow: 0 0 10px currentColor, 0 0 20px currentColor; }
+  50% { text-shadow: 0 0 20px currentColor, 0 0 40px currentColor; }
+}
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+@keyframes bounce-slow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-bounce-slow {
+  animation: bounce-slow 1.5s ease-in-out infinite;
+}
+
+@keyframes player-pop-in {
+  from { opacity: 0; transform: scale(0.5) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.lobby-player-enter {
+  animation: player-pop-in 0.3s ease-out both;
+}
 </style>
 
 <template>
   <!-- Full-screen Lobby for Waiting State -->
-  <div v-if="gameState.status === 'waiting'" class="fixed inset-0 top-14 md:top-16 bg-black z-30 flex flex-col">
-    <!-- Canvas centered on dark background -->
-    <div v-if="ready" class="flex-1 relative min-h-0 flex items-center justify-center p-3">
-      <div class="relative w-full" style="max-height: 80vh;">
-        <YCanvas
-          :strokes="lobbyStrokes"
-          :peers="peers"
-          :canDraw="true"
-          v-model:brushColor="brushColor"
-          v-model:brushSize="brushSize"
-          :onPoint="addLobbyPoint"
-          :onCommit="commitLobbyStroke"
-          :onCursor="setCursor"
-        />
+  <div v-if="gameState.status === 'waiting'" class="fixed inset-0 bg-black z-30 flex flex-col">
+    <!-- Canvas fills the screen -->
+    <div v-if="ready" class="flex-1 relative min-h-0">
+      <YCanvas
+        :strokes="lobbyStrokes"
+        :peers="peers"
+        :canDraw="true"
+        v-model:brushColor="brushColor"
+        v-model:brushSize="brushSize"
+        :onPoint="addLobbyPoint"
+        :onCommit="commitLobbyStroke"
+        :onCursor="setCursor"
+      />
 
-      <!-- Floating top bar -->
-      <div class="absolute top-3 left-3 right-3 flex items-start justify-between gap-2 pointer-events-none z-20">
-        <!-- Left: Room info + players -->
-        <div class="pointer-events-auto">
-          <button
-            @click="lobbyPlayersOpen = !lobbyPlayersOpen"
-            class="flex items-center gap-2 px-3 py-2 bg-black/60 backdrop-blur-md rounded-xl text-white text-sm hover:bg-black/70 transition-colors"
-          >
-            <span class="font-semibold">{{ roomId }}</span>
-            <span class="w-px h-4 bg-white/20"></span>
-            <span :class="isRoomFull ? 'text-red-400' : 'text-white/70'">{{ peers.length }}/{{ maxPlayers }}</span>
-            <span v-if="isRoomFull" class="text-[10px] bg-red-500/80 px-1.5 py-0.5 rounded text-white font-medium">FULL</span>
-            <!-- Player dots -->
-            <span class="flex -space-x-1.5 ml-1">
-              <span
-                v-for="peer in peers.slice(0, 5)"
-                :key="peer.id"
-                class="w-5 h-5 rounded-full border-2 border-black/60 flex-shrink-0"
-                :style="{ backgroundColor: peer.color || '#0aa' }"
-              />
-              <span v-if="peers.length > 5" class="w-5 h-5 rounded-full border-2 border-black/60 bg-gray-600 flex items-center justify-center text-[9px] text-white font-bold flex-shrink-0">
-                +{{ peers.length - 5 }}
-              </span>
-            </span>
-            <span class="text-white/40 text-xs">{{ lobbyPlayersOpen ? '▼' : '▶' }}</span>
-          </button>
-
-          <!-- Expanded player list dropdown -->
-          <div v-if="lobbyPlayersOpen" class="mt-2 bg-black/70 backdrop-blur-md rounded-xl p-3 w-64 max-h-[50vh] overflow-y-auto">
-            <div class="space-y-2 mb-3">
-              <div
-                v-for="peer in peers"
-                :key="peer.id"
-                class="flex items-center gap-2 px-2 py-1.5 rounded-lg"
-                :class="{ 'bg-white/10': peer.id === userId }"
-              >
-                <div
-                  class="w-6 h-6 rounded-full flex-shrink-0"
-                  :style="{ backgroundColor: peer.color || '#0aa' }"
-                />
-                <div class="flex-1 min-w-0">
-                  <span class="text-sm text-white truncate block">
-                    {{ peer.displayName || 'Anonymous' }}
-                    <span v-if="peer.id === userId" class="text-white/40">(you)</span>
-                  </span>
-                </div>
-                <span class="text-xs text-white/50">
-                  {{ peer.id === gameState.hostId ? '🎨' : '👀' }}
-                </span>
-              </div>
-            </div>
-            <!-- Name input -->
-            <div class="pt-2 border-t border-white/10">
-              <input
-                :value="displayName"
-                @input="(e: Event) => { displayName = (e.target as HTMLInputElement).value; setDisplayName((e.target as HTMLInputElement).value) }"
-                placeholder="Your name"
-                class="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/40"
-              />
-            </div>
-          </div>
+      <!-- Center prompt — disappears once someone draws -->
+      <div v-if="lobbyStrokes.length === 0" class="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+        <div class="text-center">
+          <p class="text-white/15 text-5xl md:text-7xl font-black leading-tight">Sketch<br/>together</p>
+          <p class="text-white/10 text-base mt-3">Everyone can draw — go wild</p>
         </div>
+      </div>
 
-        <!-- Right: Invite link -->
+      <!-- Top-left: Room + invite -->
+      <div class="absolute top-3 left-3 pointer-events-auto z-20 flex items-center gap-2">
+        <div class="px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-full text-xs text-white/50 font-medium">
+          {{ roomId }}
+        </div>
         <button
           @click="copyInviteLink"
-          class="pointer-events-auto flex items-center gap-1.5 px-3 py-2 bg-black/60 backdrop-blur-md rounded-xl text-sm transition-colors"
-          :class="linkCopied ? 'text-green-400' : 'text-white/70 hover:text-white hover:bg-black/70'"
+          class="flex items-center gap-1.5 px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-full text-xs transition-colors"
+          :class="linkCopied ? 'text-green-400' : 'text-white/50 hover:text-white'"
         >
-          <UIcon :name="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" class="w-4 h-4" />
-          <span class="hidden sm:inline">{{ linkCopied ? 'Copied!' : 'Invite' }}</span>
+          <UIcon :name="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" class="w-3.5 h-3.5" />
+          {{ linkCopied ? 'Copied!' : 'Copy invite' }}
         </button>
       </div>
 
-      <!-- Floating lobby toolbar (bottom center) -->
-      <div class="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none z-20">
-        <div class="flex items-center gap-1.5 bg-black/60 backdrop-blur-md rounded-full px-3 py-2 pointer-events-auto">
-          <!-- Clear canvas -->
+      <!-- Alone? Big invite prompt overlaid on canvas -->
+      <div v-if="peers.length <= 1" class="absolute top-1/4 left-1/2 -translate-x-1/2 pointer-events-none z-10 text-center">
+        <p class="text-white/30 text-sm font-medium mb-2">No one else here yet</p>
+        <button
+          @click="copyInviteLink"
+          class="pointer-events-auto px-5 py-2 bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 rounded-xl text-white/70 hover:text-white text-sm font-medium transition-all"
+        >
+          Share link to invite friends
+        </button>
+      </div>
+
+      <!-- Always-visible player roster — bottom-left -->
+      <div class="absolute bottom-3 left-3 pointer-events-auto z-20">
+        <div class="flex items-end gap-2">
+          <!-- Player avatars with names -->
+          <div class="flex items-end gap-1.5">
+            <div
+              v-for="peer in peers"
+              :key="peer.id"
+              class="flex flex-col items-center gap-1 lobby-player-enter"
+            >
+              <div
+                class="w-8 h-8 md:w-10 md:h-10 rounded-full border-2 border-black/50 shadow-lg flex items-center justify-center text-xs font-bold text-black/70"
+                :style="{ backgroundColor: peer.color || '#0aa' }"
+              >
+                {{ (peer.displayName || '?')[0].toUpperCase() }}
+              </div>
+              <span class="text-[10px] text-white/50 max-w-[60px] truncate text-center leading-tight">
+                {{ peer.displayName || 'Anon' }}
+                <template v-if="peer.id === userId"> (you)</template>
+              </span>
+            </div>
+          </div>
+
+          <!-- Player count -->
+          <div class="px-2 py-1 bg-black/40 backdrop-blur-sm rounded-full text-[10px] text-white/30 mb-2">
+            {{ peers.length }}/{{ maxPlayers }}
+          </div>
+        </div>
+
+        <!-- Name edit — inline, subtle -->
+        <div class="mt-2">
+          <input
+            :value="displayName"
+            @input="(e: Event) => { displayName = (e.target as HTMLInputElement).value; setDisplayName((e.target as HTMLInputElement).value) }"
+            placeholder="Your name"
+            class="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1 text-xs text-white/70 placeholder-white/20 outline-none focus:border-white/30 w-36 transition-colors"
+          />
+        </div>
+      </div>
+
+      <!-- Drawing toolbar — bottom center -->
+      <div class="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none z-20">
+        <div class="flex items-center gap-1.5 bg-black/50 backdrop-blur-md rounded-full px-3 py-2 pointer-events-auto">
           <button
             @click="clearLobbyStrokes"
-            class="w-7 h-7 rounded-full border border-white/20 hover:border-white/50 hover:scale-105 transition-all flex items-center justify-center text-white/50 hover:text-white bg-white/5"
+            class="w-7 h-7 rounded-full border border-white/15 hover:border-white/40 hover:scale-105 transition-all flex items-center justify-center text-white/40 hover:text-white bg-white/5"
             title="Clear canvas"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
           </button>
-          <div class="w-px h-5 bg-white/15 mx-0.5"></div>
-          <!-- Colors -->
+          <div class="w-px h-5 bg-white/10 mx-0.5"></div>
           <button
             v-for="color in drawingColors"
             :key="color"
             @click="selectColor(color)"
             class="w-7 h-7 rounded-full border-2 transition-all"
-            :class="brushColor === color ? 'border-white scale-110' : 'border-white/20 hover:scale-105'"
+            :class="brushColor === color ? 'border-white scale-110' : 'border-white/15 hover:scale-105'"
             :style="{ backgroundColor: color }"
           />
         </div>
       </div>
 
-      <!-- Floating host settings panel (bottom-right) -->
-      <div class="absolute bottom-14 right-3 pointer-events-auto z-20">
-        <div v-if="isHost" class="bg-black/70 backdrop-blur-md rounded-xl p-4 w-64">
-          <h3 class="text-xs font-semibold text-white/50 uppercase tracking-wider mb-3">Game Settings</h3>
-
-          <!-- Difficulty -->
-          <div class="mb-3">
-            <label class="block text-xs text-white/40 mb-1.5">Difficulty</label>
-            <div class="flex gap-1.5">
-              <button
-                v-for="diff in difficulties"
-                :key="diff"
-                @click="setDifficulty(diff)"
-                class="flex-1 py-1.5 px-1 rounded-lg font-medium transition-all text-xs"
-                :class="gameState.difficulty === diff
-                  ? 'bg-white text-black shadow-lg'
-                  : 'bg-white/10 text-white/70 hover:bg-white/20'"
-              >
-                {{ diff }}
-              </button>
-            </div>
+      <!-- Host: compact start bar — bottom right -->
+      <div v-if="isHost" class="absolute bottom-3 right-3 pointer-events-auto z-20">
+        <div class="bg-black/60 backdrop-blur-md rounded-xl p-3 w-56">
+          <!-- Settings row -->
+          <div class="flex gap-1 mb-2">
+            <button
+              v-for="diff in difficulties"
+              :key="diff"
+              @click="setDifficulty(diff)"
+              class="flex-1 py-1 rounded-lg font-medium transition-all text-[10px]"
+              :class="gameState.difficulty === diff
+                ? 'bg-white text-black'
+                : 'bg-white/10 text-white/50 hover:bg-white/20'"
+            >
+              {{ diff }}
+            </button>
           </div>
-
-          <!-- Duration -->
-          <div class="mb-4">
-            <label class="block text-xs text-white/40 mb-1.5">Time Limit</label>
-            <div class="flex gap-1.5">
-              <button
-                v-for="dur in [{ val: 20, label: '20s' }, { val: 60, label: '1m' }, { val: 180, label: '3m' }, { val: 300, label: '5m' }]"
-                :key="dur.val"
-                @click="setDuration(dur.val)"
-                class="flex-1 py-1.5 px-1 rounded-lg font-medium transition-all text-xs"
-                :class="gameState.duration === dur.val
-                  ? 'bg-white text-black shadow-lg'
-                  : 'bg-white/10 text-white/70 hover:bg-white/20'"
-              >
-                {{ dur.label }}
-              </button>
-            </div>
+          <div class="flex gap-1 mb-3">
+            <button
+              v-for="dur in [{ val: 20, label: '20s' }, { val: 60, label: '1m' }, { val: 180, label: '3m' }, { val: 300, label: '5m' }]"
+              :key="dur.val"
+              @click="setDuration(dur.val)"
+              class="flex-1 py-1 rounded-lg font-medium transition-all text-[10px]"
+              :class="gameState.duration === dur.val
+                ? 'bg-white text-black'
+                : 'bg-white/10 text-white/50 hover:bg-white/20'"
+            >
+              {{ dur.label }}
+            </button>
           </div>
-
-          <!-- Start -->
           <button
             @click="generateWordOptions"
-            class="w-full py-2.5 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl transition-colors text-sm"
+            class="w-full py-2 bg-green-500 hover:bg-green-400 text-black font-bold rounded-lg transition-colors text-sm"
           >
             Start Game
           </button>
         </div>
-
-        <!-- Non-host waiting indicator -->
-        <div v-else class="bg-black/60 backdrop-blur-md rounded-xl px-4 py-3 text-center">
-          <p class="text-white/50 text-sm">Waiting for host...</p>
-        </div>
       </div>
 
-      <!-- "Warm up!" hint text (center, fades out) -->
-      <div v-if="lobbyStrokes.length === 0" class="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-        <div class="text-center">
-          <p class="text-white/20 text-4xl md:text-6xl font-bold">Warm up!</p>
-          <p class="text-white/10 text-lg mt-2">Draw something while you wait</p>
+      <!-- Non-host: subtle waiting pill — bottom right -->
+      <div v-else class="absolute bottom-3 right-3 pointer-events-none z-20">
+        <div class="px-4 py-2 bg-black/40 backdrop-blur-md rounded-full">
+          <p class="text-white/30 text-xs flex items-center gap-2">
+            <span class="w-1.5 h-1.5 rounded-full bg-yellow-400/60 animate-pulse"></span>
+            Waiting for host to start
+          </p>
         </div>
-      </div>
       </div>
     </div>
 
@@ -677,91 +755,117 @@ onMounted(async () => {
     </div>
   </div>
 
-  <!-- Game UI (for other states) -->
-  <section v-else class="p-3 space-y-2">
-    <!-- Compact header -->
-    <div class="flex items-center justify-between gap-4">
-      <div class="flex items-center gap-3 flex-1 min-w-0">
-        <UInput
-          v-model="displayName"
-          placeholder="Your name"
-          size="xs"
-          class="w-32"
-          @update:model-value="setDisplayName"
-        />
-        <UBadge
-          :color="isSpectator ? 'yellow' : isHost ? 'green' : 'gray'"
-          variant="soft"
-          size="xs"
+  <!-- Game UI (for other states) — fullscreen -->
+  <div v-else class="fixed inset-0 bg-black z-30 flex flex-col">
+
+    <!-- Floating game HUD (top bar) -->
+    <div class="absolute top-0 left-0 right-0 z-20 pointer-events-none p-3 flex items-start justify-between">
+      <!-- Left: Status pills -->
+      <div class="pointer-events-auto flex items-center gap-1.5 flex-wrap">
+        <div
+          class="flex items-center gap-1.5 px-2.5 py-1.5 bg-black/60 backdrop-blur-md rounded-full text-xs text-white"
         >
-          {{ isSpectator ? '👁 Spectating' : isHost ? '🎨' : '👀' }}
-        </UBadge>
-        <UBadge
+          <span
+            :class="isSpectator ? 'text-yellow-400' : isDrawer ? 'text-green-400' : 'text-white/60'"
+          >
+            {{ isSpectator ? '👁' : isDrawer ? '🎨' : '👀' }}
+          </span>
+          <input
+            :value="displayName"
+            @input="(e: Event) => { displayName = (e.target as HTMLInputElement).value; setDisplayName((e.target as HTMLInputElement).value) }"
+            placeholder="Name"
+            class="bg-transparent border-none text-xs text-white placeholder-white/30 outline-none w-20"
+          />
+        </div>
+        <div
+          v-if="isMultiRound && (gameState.status === 'playing' || gameState.status === 'roundEnd')"
+          class="px-2.5 py-1.5 bg-purple-500/20 backdrop-blur-md rounded-full text-xs text-purple-300 font-medium"
+        >
+          R{{ gameState.roundNumber }}/{{ gameState.totalRounds }}
+        </div>
+        <div
           v-if="gameState.status === 'playing'"
-          color="blue"
-          variant="soft"
-          size="xs"
+          class="px-2.5 py-1.5 backdrop-blur-md rounded-full text-xs font-mono font-medium"
+          :class="showCountdownWarning ? 'bg-red-500/30 text-red-300 animate-pulse' : 'bg-blue-500/20 text-blue-300'"
         >
           {{ formattedTime }}
-        </UBadge>
-        <UBadge
-          v-if="showCountdownWarning"
-          color="red"
-          variant="solid"
-          size="xs"
-          class="animate-pulse"
+        </div>
+        <!-- Drawer's secret word -->
+        <div
+          v-if="isDrawer && gameState.status === 'playing'"
+          class="px-2.5 py-1.5 bg-green-500/20 backdrop-blur-md rounded-full text-xs text-green-300 font-semibold"
         >
-          {{ timeRemaining }}
-        </UBadge>
+          {{ selectedWordLocal }}
+        </div>
       </div>
 
-      <!-- Collapsible Players -->
-      <div class="relative">
+      <!-- Right: Players + controls -->
+      <div class="pointer-events-auto flex items-center gap-1.5">
+        <!-- Drawer controls -->
+        <button
+          v-if="isDrawer && gameState.status === 'playing'"
+          @click="clearCanvas"
+          class="px-2.5 py-1.5 bg-red-500/20 backdrop-blur-md rounded-full text-xs text-red-300 hover:bg-red-500/30 transition-colors"
+        >
+          Clear
+        </button>
+        <button
+          v-if="(isDrawer || isHost) && gameState.status === 'playing'"
+          @click="requestNewGame"
+          class="px-2.5 py-1.5 bg-white/10 backdrop-blur-md rounded-full text-xs text-white/50 hover:text-white hover:bg-white/20 transition-colors"
+        >
+          End
+        </button>
+
+        <!-- Player count pill -->
         <button
           @click="playersExpanded = !playersExpanded"
-          class="flex items-center gap-2 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-800 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          class="flex items-center gap-1.5 px-2.5 py-1.5 bg-black/60 backdrop-blur-md rounded-full text-xs text-white/70 hover:text-white transition-colors"
         >
-          <span>{{ activePlayers.length }} {{ activePlayers.length === 1 ? 'player' : 'players' }}</span>
-          <span v-if="spectators.length" class="text-yellow-500">+{{ spectators.length }}</span>
-          <span class="text-gray-400">{{ playersExpanded ? '▼' : '▶' }}</span>
+          <span class="flex -space-x-1">
+            <span
+              v-for="peer in peers.slice(0, 4)"
+              :key="peer.id"
+              class="w-4 h-4 rounded-full border border-black/60 flex-shrink-0"
+              :style="{ backgroundColor: peer.color || '#0aa' }"
+            />
+          </span>
+          <span>{{ activePlayers.length }}</span>
+          <span v-if="spectators.length" class="text-yellow-400/70">+{{ spectators.length }}</span>
         </button>
+
+        <!-- Expanded player list -->
         <div
           v-if="playersExpanded"
-          class="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 rounded border shadow-lg p-2 min-w-[170px] z-20"
+          class="absolute right-3 top-12 bg-black/80 backdrop-blur-md rounded-xl p-3 min-w-[180px] max-h-[50vh] overflow-y-auto border border-white/10"
         >
-          <div class="space-y-1 max-h-[250px] overflow-y-auto">
+          <div class="space-y-1.5">
             <div
               v-for="peer in activePlayers"
               :key="peer.id"
               class="flex items-center gap-2 text-xs"
             >
               <div
-                class="w-2 h-2 rounded-full"
+                class="w-3 h-3 rounded-full flex-shrink-0"
                 :style="{ backgroundColor: peer.color || '#0aa' }"
               />
-              <span class="truncate" :class="{ 'font-semibold': peer.id === userId }">
+              <span class="truncate text-white/80" :class="{ 'font-semibold text-white': peer.id === userId }">
                 {{ peer.displayName || 'Anonymous' }}
-                <span v-if="peer.id === gameState.hostId">🎨</span>
-                <span v-if="peer.id === gameState.winnerId">🏆</span>
+                <span v-if="peer.id === gameState.drawerId" class="text-yellow-400">🎨</span>
+                <span v-if="peer.id === gameState.winnerId" class="text-yellow-400">🏆</span>
+                <span v-if="peer.id === userId" class="text-white/30">(you)</span>
               </span>
             </div>
-            <!-- Spectators section -->
             <template v-if="spectators.length">
-              <div class="border-t border-gray-200 dark:border-gray-700 my-1 pt-1">
-                <p class="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Spectators</p>
+              <div class="border-t border-white/10 my-1 pt-1">
+                <p class="text-[10px] text-white/30 uppercase tracking-wide mb-1">Spectators</p>
                 <div
                   v-for="peer in spectators"
                   :key="peer.id"
                   class="flex items-center gap-2 text-xs opacity-60"
                 >
-                  <div
-                    class="w-2 h-2 rounded-full"
-                    :style="{ backgroundColor: peer.color || '#0aa' }"
-                  />
-                  <span class="truncate" :class="{ 'font-semibold': peer.id === userId }">
-                    {{ peer.displayName || 'Anonymous' }}
-                    <span>👁</span>
-                  </span>
+                  <div class="w-3 h-3 rounded-full flex-shrink-0" :style="{ backgroundColor: peer.color || '#0aa' }" />
+                  <span class="truncate text-white/60">{{ peer.displayName || 'Anonymous' }} 👁</span>
                 </div>
               </div>
             </template>
@@ -770,134 +874,76 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- Compact controls row -->
-    <div class="flex items-center gap-2 flex-wrap text-xs">
+    <!-- Non-drawer waiting screen during word selection -->
+    <div v-if="!isDrawer && gameState.status === 'selecting'" class="flex-1 flex items-center justify-center p-6">
+      <div class="text-center max-w-md w-full">
+        <div class="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+        <h2 class="text-xl font-bold text-white mb-1">{{ currentDrawerName }} is choosing a word...</h2>
+        <p class="text-white/40 text-sm mb-6">
+          <template v-if="isMultiRound">Round {{ gameState.roundNumber }}/{{ gameState.totalRounds }}</template>
+          <template v-else>The game will start soon</template>
+        </p>
 
-
-        <!-- Host Controls - Playing -->
-        <template v-if="isHost && gameState.status === 'playing'">
-          <div class="bg-green-100 dark:bg-green-900/30 px-2 py-1 rounded text-green-700 dark:text-green-400 font-semibold">
-            {{ selectedWordLocal }}
-          </div>
-          <UButton
-            @click="clearCanvas"
-            color="red"
-            variant="soft"
-            size="xs"
+        <!-- Compact player row -->
+        <div class="flex flex-wrap justify-center gap-2">
+          <div
+            v-for="peer in peers"
+            :key="peer.id"
+            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white/5 border border-white/10"
+            :class="{ 'border-primary/50': peer.id === userId }"
           >
-            Clear
-          </UButton>
-          <UButton
-            @click="requestNewGame"
-            color="gray"
-            variant="soft"
-            size="xs"
-          >
-            End
-          </UButton>
-        </template>
-
-
-        <!-- Waiting messages -->
-        <span v-if="!isHost && gameState.status === 'waiting'" class="text-gray-500 text-xs">
-          Waiting for host...
-        </span>
-    </div>
-
-    <!-- Non-host waiting screen during word selection -->
-    <div v-if="!isHost && gameState.status === 'selecting'" class="flex items-center justify-center p-6 min-h-[80vh]">
-      <div class="text-center max-w-2xl w-full">
-        <div class="animate-spin w-16 h-16 border-4 border-primary border-t-transparent rounded-full mx-auto mb-6"></div>
-        <h2 class="text-2xl font-bold mb-2">Host is choosing a word...</h2>
-        <p class="text-gray-600 dark:text-gray-400 mb-8">The game will start soon</p>
-
-        <!-- Players List -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mt-8">
-          <h3 class="text-lg font-semibold mb-4 flex items-center justify-center gap-2">
-            <span>👥</span>
-            <span>Players</span>
-            <span class="text-sm font-normal text-gray-500">{{ peers.length }}</span>
-          </h3>
-
-          <div class="grid grid-cols-2 gap-2">
-            <div
-              v-for="peer in peers"
-              :key="peer.id"
-              class="flex items-center gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-700"
-              :class="{ 'ring-2 ring-primary': peer.id === userId }"
-            >
-              <div
-                class="w-8 h-8 rounded-full flex-shrink-0"
-                :style="{ backgroundColor: peer.color || '#0aa' }"
-              />
-              <div class="flex-1 min-w-0 text-left">
-                <div class="text-sm font-semibold truncate">
-                  {{ peer.displayName || 'Anonymous' }}
-                  <span v-if="peer.id === userId" class="text-xs text-gray-500">(you)</span>
-                </div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">
-                  <span v-if="peer.id === gameState.hostId">🎨 Host</span>
-                  <span v-else>👀 Player</span>
-                </div>
-              </div>
-            </div>
+            <div class="w-4 h-4 rounded-full flex-shrink-0" :style="{ backgroundColor: peer.color || '#0aa' }" />
+            <span class="text-xs text-white/70">{{ peer.displayName || 'Anon' }}</span>
+            <span v-if="peer.id === gameState.drawerId" class="text-xs">🎨</span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Full-screen Word Selection for Host -->
-    <div v-if="isHost && gameState.status === 'selecting'" class="flex items-center justify-center p-6 min-h-[80vh]">
-      <div class="max-w-4xl w-full">
-        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
-          <h2 class="text-3xl font-bold mb-2 text-center">Choose Your Word</h2>
-          <p class="text-gray-600 dark:text-gray-400 text-center mb-8">
-            Select a word to draw for the other players
-          </p>
+    <!-- Word Selection for Drawer -->
+    <div v-else-if="isDrawer && gameState.status === 'selecting'" class="flex-1 flex items-center justify-center p-6">
+      <div class="max-w-2xl w-full">
+        <h2 class="text-2xl font-bold mb-1 text-center text-white">Choose Your Word</h2>
+        <p class="text-white/40 text-sm text-center mb-6">
+          <template v-if="isMultiRound">Round {{ gameState.roundNumber }}/{{ gameState.totalRounds }} — </template>
+          Select a word to draw
+        </p>
 
-          <!-- Word Options - 3 across -->
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <button
-              v-for="word in gameState.wordOptions"
-              :key="word"
-              @click="() => { selectWord(word); selectedWordLocal = word }"
-              class="group relative p-8 rounded-xl border-4 transition-all hover:scale-105"
-              :class="selectedWordLocal === word
-                ? 'border-primary bg-primary/10 shadow-lg'
-                : 'border-gray-200 dark:border-gray-700 hover:border-primary/50'"
-            >
-              <div class="text-center">
-                <div class="text-3xl font-bold" :class="selectedWordLocal === word ? 'text-primary' : 'text-gray-900 dark:text-white'">
-                  {{ word }}
-                </div>
-                <div v-if="selectedWordLocal === word" class="text-primary text-xl mt-2">
-                  ✓
-                </div>
+        <!-- Word Options -->
+        <div class="grid grid-cols-3 gap-3 mb-6">
+          <button
+            v-for="word in gameState.wordOptions"
+            :key="word"
+            @click="() => { selectWord(word); selectedWordLocal = word }"
+            class="group relative p-6 rounded-xl border-2 transition-all hover:scale-105"
+            :class="selectedWordLocal === word
+              ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20'
+              : 'border-white/10 bg-white/5 hover:border-white/30'"
+          >
+            <div class="text-center">
+              <div class="text-xl font-bold" :class="selectedWordLocal === word ? 'text-primary' : 'text-white'">
+                {{ word }}
               </div>
-            </button>
-          </div>
-
-          <!-- Start Button -->
-          <div class="flex justify-center">
-            <UButton
-              v-if="gameState.wordCommitment"
-              @click="startGame"
-              color="primary"
-              size="xl"
-              class="font-bold text-lg px-12"
-            >
-              🎮 Start Drawing! ({{ gameState.duration < 60 ? `${gameState.duration}s` : `${Math.floor(gameState.duration / 60)}m` }})
-            </UButton>
-            <div v-else class="text-gray-500 dark:text-gray-400">
-              Select a word to continue...
             </div>
-          </div>
+          </button>
+        </div>
+
+        <!-- Start Button -->
+        <div class="flex justify-center">
+          <button
+            v-if="gameState.wordCommitment"
+            @click="startGame"
+            class="px-10 py-3 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl transition-colors text-base"
+          >
+            Start Drawing! ({{ gameState.duration < 60 ? `${gameState.duration}s` : `${Math.floor(gameState.duration / 60)}m` }})
+          </button>
+          <p v-else class="text-white/30 text-sm">Select a word to continue...</p>
         </div>
       </div>
     </div>
 
     <!-- Canvas with overlay -->
-    <div v-if="gameState.status === 'playing' || gameState.status === 'finished'" class="relative">
+    <div v-if="gameState.status === 'playing' || gameState.status === 'finished' || gameState.status === 'roundEnd'" class="flex-1 relative min-h-0">
       <YCanvas
         ref="canvasRef"
         v-if="ready"
@@ -958,8 +1004,8 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Drawing toolbar (bottom center, only for host during playing) -->
-      <div v-if="ready && isHost && gameState.status === 'playing'" class="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none z-10">
+      <!-- Drawing toolbar (bottom center, only for drawer during playing) -->
+      <div v-if="ready && isDrawer && gameState.status === 'playing'" class="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none z-10">
         <div class="flex items-center gap-1 bg-black/40 backdrop-blur-sm rounded-full p-2">
           <!-- Undo -->
           <button
@@ -991,8 +1037,8 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Input area (viewers during playing, disabled for spectators) -->
-      <div v-if="ready && !isHost && gameState.status === 'playing'" class="absolute bottom-4 right-4 w-64 p-2 pointer-events-auto z-10 bg-black/30 backdrop-blur-sm rounded-lg">
+      <!-- Input area (viewers during playing, disabled for spectators and drawer) -->
+      <div v-if="ready && !isDrawer && gameState.status === 'playing'" class="absolute bottom-4 right-4 w-64 p-2 pointer-events-auto z-10 bg-black/30 backdrop-blur-sm rounded-lg">
         <div v-if="isSpectator" class="text-xs text-yellow-400 flex items-center gap-1 justify-center py-1">
           <span>👁</span> Spectating — joined mid-game
         </div>
@@ -1017,18 +1063,83 @@ onMounted(async () => {
         </div>
       </div>
     </div>
-  </section>
+  </div>
+
+  <!-- Round End Overlay -->
+  <div v-if="gameState.status === 'roundEnd'" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" style="z-index: 99998;">
+    <div class="bg-gray-900 border border-white/10 rounded-2xl shadow-2xl max-w-md w-full p-6 text-center text-white">
+      <!-- Round info -->
+      <div class="text-sm text-white/50 font-medium mb-2">
+        Round {{ gameState.roundNumber }}/{{ gameState.totalRounds }}
+      </div>
+
+      <!-- Word reveal -->
+      <div class="mb-4">
+        <p class="text-white/40 text-xs mb-1">The word was</p>
+        <p class="text-3xl font-bold text-primary">{{ gameState.selectedWord }}</p>
+      </div>
+
+      <!-- Round winner -->
+      <div v-if="gameState.winnerId" class="mb-4">
+        <p class="text-lg font-semibold text-green-400">
+          {{ gameState.winnerName }} guessed it! <span class="text-sm text-white/50">+3</span>
+        </p>
+        <p class="text-sm text-white/40">
+          {{ currentDrawerName }} <span class="text-white/30">+1 (drawer)</span>
+        </p>
+      </div>
+      <div v-else class="mb-4">
+        <p class="text-lg text-white/50">Time's up — no one guessed it</p>
+      </div>
+
+      <!-- Mini scoreboard -->
+      <div class="bg-white/5 rounded-xl p-3 mb-4">
+        <h4 class="text-xs text-white/40 uppercase tracking-wider mb-2">Standings</h4>
+        <div class="space-y-1.5">
+          <div
+            v-for="(entry, index) in sortedScores"
+            :key="entry.id"
+            class="flex items-center justify-between text-sm px-2 py-1 rounded-lg"
+            :class="entry.id === userId ? 'bg-white/10' : ''"
+          >
+            <div class="flex items-center gap-2">
+              <span class="text-white/40 w-4 text-right">{{ index + 1 }}.</span>
+              <span :class="entry.id === gameState.drawerId ? 'text-yellow-400' : 'text-white'">
+                {{ entry.name }}
+              </span>
+              <span v-if="entry.id === userId" class="text-white/30 text-xs">(you)</span>
+            </div>
+            <span class="font-bold text-white/80">{{ entry.score }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Next drawer -->
+      <div v-if="nextDrawerName" class="text-sm text-white/50 mb-3">
+        Next up: <span class="text-white font-medium">{{ nextDrawerName }}</span> draws
+      </div>
+
+      <!-- Countdown bar -->
+      <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+        <div
+          class="h-full bg-primary rounded-full transition-all duration-1000 ease-linear"
+          :style="{ width: `${(roundEndCountdown / 5) * 100}%` }"
+        />
+      </div>
+      <p class="text-xs text-white/30 mt-1">Next round in {{ roundEndCountdown }}s</p>
+    </div>
+  </div>
 
   <!-- Debug Panel -->
   <DebugPanel />
 
   <!-- Game Finished Modal (outside section so it's always available) -->
-  <div v-if="showFinishModal && gameState.status === 'finished'" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 md:p-4" style="z-index: 99999;" @click.self="handleNewGame">
-    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-4xl w-full max-h-[95vh] md:max-h-none overflow-y-auto p-3 md:p-6 relative">
+  <div v-if="showFinishModal && gameState.status === 'finished'" class="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-2 md:p-4" style="z-index: 99999;" @click.self="handleNewGame">
+    <div class="bg-gray-900 border border-white/10 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[95vh] md:max-h-none overflow-y-auto p-4 md:p-8 relative text-white">
       <!-- Close button (mobile only) -->
       <button
         @click="handleNewGame"
-        class="md:hidden absolute top-2 left-2 p-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-full transition-colors z-10"
+        class="md:hidden absolute top-2 left-2 p-1.5 bg-white/10 hover:bg-white/20 rounded-full transition-colors z-10"
         title="Close"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1036,14 +1147,14 @@ onMounted(async () => {
         </svg>
       </button>
 
-      <!-- Responsive Layout: Horizontal on desktop, Vertical on mobile -->
-      <div class="flex flex-col md:flex-row gap-3 md:gap-6">
-        <!-- PNG Preview (optional - loads in background) -->
+      <div class="flex flex-col md:flex-row gap-4 md:gap-8">
+        <!-- PNG Preview -->
         <div v-if="exportedImageUrl" class="flex-shrink-0 md:w-1/2 relative mx-auto max-w-[80vw] md:max-w-none">
-          <div class="rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700 aspect-[4/3] md:aspect-auto md:h-auto flex items-center justify-center bg-black">
+          <div class="rounded-xl overflow-hidden border-2 aspect-[4/3] md:aspect-auto md:h-auto flex items-center justify-center bg-black"
+            :class="gameState.winnerId ? 'border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.15)]' : 'border-white/10'"
+          >
             <img :src="exportedImageUrl" alt="Drawing" class="w-full h-full object-contain" />
           </div>
-          <!-- Download button overlay -->
           <button
             @click="downloadDrawing"
             class="absolute top-2 right-2 p-2 bg-black/60 hover:bg-black/80 backdrop-blur-sm rounded-lg transition-all"
@@ -1055,10 +1166,10 @@ onMounted(async () => {
           </button>
         </div>
 
-        <!-- Loading placeholder while preview generates -->
+        <!-- Loading placeholder -->
         <div v-else class="flex-shrink-0 md:w-1/2 relative">
-          <div class="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 h-64 md:h-full flex items-center justify-center">
-            <div class="text-center text-gray-400">
+          <div class="rounded-xl border-2 border-dashed border-white/10 h-64 md:h-full flex items-center justify-center">
+            <div class="text-center text-white/40">
               <div class="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-3"></div>
               <p class="text-sm">Generating preview...</p>
             </div>
@@ -1068,44 +1179,117 @@ onMounted(async () => {
         <!-- Info Panel -->
         <div class="flex-1 flex flex-col justify-between min-h-0">
           <div>
-            <h2 class="text-xl md:text-3xl font-bold mb-2 md:mb-3">Game Over!</h2>
+            <!-- Title -->
+            <h2 class="text-2xl md:text-4xl font-bold mb-4">
+              {{ isMultiRound ? 'Session Complete!' : 'Game Over!' }}
+            </h2>
 
-            <div class="space-y-2 md:space-y-3">
-              <div>
-                <p class="text-gray-600 dark:text-gray-400 text-xs mb-1">The word was:</p>
-                <p class="text-xl md:text-3xl font-bold text-primary">{{ gameState.selectedWord }}</p>
+            <!-- Word reveal with letter animation -->
+            <div class="mb-4">
+              <p class="text-white/40 text-xs mb-2">The word was</p>
+              <div class="flex gap-1">
+                <span
+                  v-for="(letter, i) in (gameState.selectedWord || '').split('')"
+                  :key="i"
+                  class="text-2xl md:text-4xl font-bold text-primary inline-block animate-fade-in-letter"
+                  :style="{ animationDelay: `${i * 80}ms` }"
+                >{{ letter.toUpperCase() }}</span>
+              </div>
+            </div>
+
+            <!-- Multi-round: Final Scoreboard with Podium -->
+            <template v-if="isMultiRound && sortedScores.length > 0">
+              <!-- Winner celebration -->
+              <div v-if="sessionWinner" class="mb-4">
+                <div class="text-center py-3 px-4 bg-gradient-to-r from-yellow-500/10 via-yellow-500/20 to-yellow-500/10 rounded-xl border border-yellow-500/20">
+                  <div class="text-4xl mb-1 animate-bounce-slow">🏆</div>
+                  <p class="text-xl md:text-2xl font-bold text-yellow-400 animate-glow">
+                    {{ sessionWinner.name }} wins!
+                  </p>
+                  <p class="text-sm text-white/50">{{ sessionWinner.score }} points</p>
+                </div>
+              </div>
+              <div v-else-if="sortedScores.length > 1" class="mb-4">
+                <div class="text-center py-3 px-4 bg-gradient-to-r from-white/5 via-white/10 to-white/5 rounded-xl border border-white/10">
+                  <div class="text-3xl mb-1">🤝</div>
+                  <p class="text-xl font-bold text-white/80">It's a tie!</p>
+                  <p class="text-sm text-white/50">{{ sortedScores[0].score }} points each</p>
+                </div>
               </div>
 
-              <div v-if="gameState.winnerId">
-                <p class="text-gray-600 dark:text-gray-400 text-xs mb-1">Winner:</p>
-                <p class="text-lg md:text-2xl font-bold text-green-600 dark:text-green-400">
-                  🏆 {{ gameState.winnerName }}
-                </p>
-              </div>
-              <div v-else>
-                <p class="text-gray-600 dark:text-gray-400 text-xs mb-1">Result:</p>
-                <p class="text-lg md:text-xl font-semibold text-gray-500">
-                  ⏱️ Time's up - No winner
-                </p>
-              </div>
-
-              <div class="text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-700">
-                <div class="flex items-center gap-2">
-                  <span>Commitment Verification:</span>
-                  <div v-if="gameState.commitmentVerified !== null" class="inline-flex items-center gap-1 px-2 py-1 rounded-full" :class="gameState.commitmentVerified ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'">
-                    <span>{{ gameState.commitmentVerified ? '✓' : '✗' }}</span>
-                    <span class="hidden md:inline">{{ gameState.commitmentVerified ? 'Verified' : 'Failed' }}</span>
+              <!-- Full rankings -->
+              <div class="bg-white/5 rounded-xl p-3 mb-3">
+                <h4 class="text-xs text-white/40 uppercase tracking-wider mb-2">Final Standings</h4>
+                <div class="space-y-1.5">
+                  <div
+                    v-for="(entry, index) in sortedScores"
+                    :key="entry.id"
+                    class="flex items-center justify-between text-sm px-3 py-2 rounded-lg transition-colors"
+                    :class="[
+                      index === 0 ? 'bg-yellow-500/10 border border-yellow-500/20' :
+                      index === 1 ? 'bg-white/5 border border-white/5' :
+                      index === 2 ? 'bg-amber-900/10 border border-amber-900/20' : 'bg-transparent',
+                      entry.id === userId ? 'ring-1 ring-primary/50' : ''
+                    ]"
+                  >
+                    <div class="flex items-center gap-2">
+                      <span class="w-6 text-center">
+                        {{ index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.` }}
+                      </span>
+                      <span class="font-medium">{{ entry.name }}</span>
+                      <span v-if="entry.id === userId" class="text-white/30 text-xs">(you)</span>
+                    </div>
+                    <span class="font-bold" :class="index === 0 ? 'text-yellow-400' : 'text-white/70'">
+                      {{ entry.score }} pts
+                    </span>
                   </div>
+                </div>
+              </div>
+
+              <!-- Session stats -->
+              <div class="text-xs text-white/40 flex items-center gap-3">
+                <span>{{ gameState.totalRounds }} rounds</span>
+                <span class="w-1 h-1 rounded-full bg-white/20"></span>
+                <span>{{ formattedActualDuration }}</span>
+              </div>
+            </template>
+
+            <!-- Single-round result -->
+            <template v-else>
+              <div v-if="gameState.winnerId" class="mb-4">
+                <div class="text-center py-4 px-4 bg-gradient-to-r from-green-500/10 via-green-500/20 to-green-500/10 rounded-xl border border-green-500/20">
+                  <div class="text-4xl mb-1 animate-bounce-slow">🏆</div>
+                  <p class="text-xl md:text-2xl font-bold text-green-400 animate-glow">
+                    {{ gameState.winnerName }}
+                  </p>
+                  <p class="text-sm text-white/40 mt-1">guessed it in {{ formattedActualDuration }}</p>
+                </div>
+              </div>
+              <div v-else class="mb-4">
+                <p class="text-lg font-semibold text-white/50">
+                  Time's up — no winner
+                </p>
+              </div>
+            </template>
+
+            <!-- Commitment verification -->
+            <div class="text-xs text-white/40 pt-3 border-t border-white/5 mt-3">
+              <div class="flex items-center gap-2">
+                <span>Commitment:</span>
+                <div v-if="gameState.commitmentVerified !== null" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs"
+                  :class="gameState.commitmentVerified ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'">
+                  <span>{{ gameState.commitmentVerified ? '✓ Verified' : '✗ Failed' }}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="mt-3 md:mt-4 flex justify-center">
+          <div class="mt-4 flex justify-center">
             <UButton
               @click.stop="handleNewGame"
               color="primary"
               size="lg"
+              class="font-bold px-8"
               :loading="electionInProgress"
               :disabled="electionInProgress"
             >

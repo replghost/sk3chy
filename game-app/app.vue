@@ -1,13 +1,8 @@
 <template>
-  <div class="min-h-screen flex flex-col">
+  <div class="min-h-screen">
     <AppHeader />
-
-    <main class="flex-1">
-      <NuxtPage />
-    </main>
-
+    <NuxtPage />
     <AppFooter />
-
     <OnboardingModal v-model="showOnboarding" />
   </div>
 </template>
@@ -42,10 +37,9 @@ onMounted(() => {
   -webkit-text-size-adjust: 100%;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    background-color: #fafafa;
-    color: #171717;
-  }
+html, body {
+  overflow: hidden;
+  height: 100%;
+  height: 100dvh;
 }
 </style>
