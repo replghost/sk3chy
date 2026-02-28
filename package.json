@@ -10,5 +10,9 @@
     "build": "bun --filter game-app build",
     "preview": "bun --filter game-app preview"
   },
-  "packageManager": "bun@1.0.0"
+  "packageManager": "bun@1.0.0",
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "ws": "^8.19.0"
+  }
 }

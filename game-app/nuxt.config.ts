@@ -25,7 +25,7 @@ export default defineNuxtConfig({
   ssr: false, // Enable SPA mode
   runtimeConfig: {
     public: {
-      statementStoreWs: process.env.NUXT_PUBLIC_STATEMENT_STORE_WS || 'wss://pop3-testnet.parity-lab.parity.io/people',
+      statementStoreWs: process.env.NUXT_PUBLIC_STATEMENT_STORE_WS || 'wss://previewnet.substrate.dev/people',
       statementStoreSigningMode: process.env.NUXT_PUBLIC_STATEMENT_STORE_SIGNING || 'mnemonic',
       turnUsername: process.env.NUXT_PUBLIC_TURN_USERNAME || '',
       turnCredential: process.env.NUXT_PUBLIC_TURN_CREDENTIAL || '',

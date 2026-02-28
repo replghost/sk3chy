@@ -44,9 +44,15 @@ const spectators = computed(() => {
 
 // Chain / endpoint options
 const CHAIN_OPTIONS = [
-  { label: 'PoP People', endpoint: 'wss://pop3-testnet.parity-lab.parity.io/people' },
   { label: 'PreviewNet', endpoint: 'wss://previewnet.substrate.dev/people' },
+  { label: 'PoP People', endpoint: 'wss://pop3-testnet.parity-lab.parity.io/people' },
 ]
+
+// Allow custom endpoint from env (useful for local testing with mock servers)
+const customEndpoint = config.public.statementStoreWs as string
+if (customEndpoint && !CHAIN_OPTIONS.some(c => c.endpoint === customEndpoint)) {
+  CHAIN_OPTIONS.push({ label: 'Custom', endpoint: customEndpoint })
+}
 
 const ALLOWED_ENDPOINTS = new Set(CHAIN_OPTIONS.map((chain) => chain.endpoint))
 
