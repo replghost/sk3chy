@@ -1,9 +1,10 @@
 <template>
   <div class="min-h-screen">
-    <AppHeader />
+    <AppHeader v-if="!keys.isInHost.value" />
     <NuxtPage />
-    <AppFooter />
+    <AppFooter v-if="!keys.isInHost.value" />
     <OnboardingModal
+      v-if="!keys.isInHost.value"
       v-model="showOnboarding"
       :require-on-chain="onboardingRequireOnChain"
       :chain-endpoint="onboardingChainEndpoint"

@@ -8,6 +8,14 @@ export default defineNuxtConfig({
   modules: ['@nuxt/ui', '@wagmi/vue/nuxt'],
   vite: {
     plugins: [wasm(), topLevelAwait()],
+    server: {
+      // Allow cross-origin requests when embedded in a host app iframe
+      cors: true,
+    },
+    optimizeDeps: {
+      // Prevent stale dep cache errors when loaded in a cross-origin iframe
+      force: true,
+    },
   },
   vue: {
     compilerOptions: {
@@ -17,8 +25,6 @@ export default defineNuxtConfig({
   ssr: false, // Enable SPA mode
   runtimeConfig: {
     public: {
-      signalingMode: process.env.NUXT_PUBLIC_SIGNALING_MODE || 'statement-store',
-      signalingServer: process.env.NUXT_PUBLIC_SIGNALING_SERVER || 'ws://localhost:4444',
       statementStoreWs: process.env.NUXT_PUBLIC_STATEMENT_STORE_WS || 'wss://pop3-testnet.parity-lab.parity.io/people',
       statementStoreSigningMode: process.env.NUXT_PUBLIC_STATEMENT_STORE_SIGNING || 'mnemonic',
       turnUsername: process.env.NUXT_PUBLIC_TURN_USERNAME || '',

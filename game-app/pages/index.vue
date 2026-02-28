@@ -19,7 +19,7 @@
         Welcome back, {{ keys.username.value }}
       </div>
       <button
-        v-else-if="keys.initialized.value"
+        v-else-if="keys.initialized.value && !keys.isInHost.value"
         @click="showOnboarding = true"
         class="px-6 py-2 rounded-xl bg-white/10 text-white/70 hover:bg-white/20 hover:text-white text-sm font-medium transition-all backdrop-blur-sm"
       >
@@ -90,6 +90,10 @@ const rooms = [
 
 onMounted(() => {
   keys.init()
+  // When embedded in a host, skip the landing page and go straight to a game room
+  if (keys.isInHost.value) {
+    router.push('/play/1')
+  }
 })
 
 function playNow() {

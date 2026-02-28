@@ -61,7 +61,6 @@ const configuredEndpoint = ALLOWED_ENDPOINTS.has(configuredEndpointRaw)
 const selectedEndpoint = ref(
   urlChain || configuredEndpoint
 )
-const configuredMode = (config.public.signalingMode as string) || 'webrtc'
 const connecting = ref(false)
 const connectionError = ref<string | null>(null)
 const selectedChainLabel = computed(() => {
@@ -552,23 +551,64 @@ async function connectToChain(endpoint: string) {
     let preferredName: string | undefined
 
     if (keys.isInHost.value) {
-      const spektrReady = await new Promise<boolean>((resolve) => {
-        if (keys.spektrReady.value) return resolve(true)
-        if (keys.spektrInitFailed.value) return resolve(false)
-        const timer = setTimeout(() => { stop(); resolve(false) }, 8000)
+      // Wait for Spektr extension to initialize (connected or failed)
+      await new Promise<void>((resolve) => {
+        if (keys.spektrReady.value || keys.spektrInitFailed.value) return resolve()
+        const timer = setTimeout(() => { stop(); resolve() }, 8000)
         const stop = watch(
           [keys.spektrReady, keys.spektrInitFailed],
           ([ready, failed]) => {
-            if (ready || failed) { clearTimeout(timer); stop(); resolve(!!ready) }
+            if (ready || failed) { clearTimeout(timer); stop(); resolve() }
           }
         )
       })
-      useHostMode = spektrReady && !!keys.spektrAccount.value
+
+      if (keys.spektrInitFailed.value) {
+        throw new Error('Could not connect to host wallet. Ensure the host app supports Spektr.')
+      }
+
+      // Spektr connected — wait for an account (user may need to connect wallet in host)
+      if (!keys.spektrAccount.value) {
+        addLog('Waiting for host wallet — connect an account in the host app', 'warning')
+      }
+      await new Promise<void>((resolve, reject) => {
+        if (keys.spektrAccount.value) return resolve()
+        const timer = setTimeout(() => { stop(); reject(new Error('Connect a wallet in the host app to continue.')) }, 120000)
+        const stop = watch(
+          () => keys.spektrAccount.value,
+          (acc) => {
+            if (acc) { clearTimeout(timer); stop(); resolve() }
+          }
+        )
+      })
+      useHostMode = true
     }
 
-    // Statement store requires an account with on-chain username + allowance.
-    // Match web3-meet behavior: block room join until registration is complete.
-    if (configuredMode === 'statement-store' && !useHostMode) {
+    if (useHostMode) {
+      // Host provides the wallet — skip on-chain registration gate
+      onboardingRequireOnChain.value = false
+      const account = keys.spektrAccount.value!
+      preferredName = account.name || keys.username.value || undefined
+      try {
+        await start({
+          statementStoreEndpoint: endpoint,
+          signingMode: 'external',
+          externalSigner: {
+            address: account.address,
+            keyType: (account.type as 'sr25519' | 'ed25519' | 'ecdsa') || undefined,
+            sign: keys.spektrSignRaw,
+          },
+          peerId: userId.value,
+          username: preferredName,
+          onLog: addLog,
+        })
+      } catch (error: any) {
+        const message = error?.message || 'Unknown error'
+        addLog(`Statement-store signaling failed: ${message}`, 'error')
+        throw new Error(message)
+      }
+    } else {
+      // Standalone mode — require on-chain registration
       registration.init(endpoint)
       onboardingChainEndpoint.value = endpoint
       onboardingRequireOnChain.value = true
@@ -577,70 +617,17 @@ async function connectToChain(endpoint: string) {
         showOnboarding.value = true
         throw new Error('On-chain registration required for this chain before joining')
       }
-    } else {
-      onboardingRequireOnChain.value = false
-    }
 
-    const startWithWebrtcFallback = async () => {
-      const signalingServer = (config.public.signalingServer as string) || 'ws://localhost:4444'
-      const iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
-      if ((config.public.turnUsername as string) && (config.public.turnCredential as string)) {
-        iceServers.push({
-          urls: [
-            'turn:a.relay.metered.ca:443',
-            'turn:a.relay.metered.ca:443?transport=tcp'
-          ],
-          username: config.public.turnUsername as string,
-          credential: config.public.turnCredential as string
-        })
-      }
-
-      addLog(`Using y-webrtc signaling (${signalingServer})`, 'info')
-      await start({
-        signalingMode: 'webrtc',
-        signaling: [signalingServer],
-        iceServers,
-        peerId: userId.value,
-        username: preferredName,
-        onLog: addLog,
-      })
-    }
-
-    if (configuredMode !== 'statement-store') {
-      preferredName = (useHostMode ? keys.spektrAccount.value?.name : keys.username.value) || undefined
-      await startWithWebrtcFallback()
-    } else {
+      preferredName = keys.username.value || undefined
       try {
-        // Both modes use statement-store signing identity.
-        // Signing method differs: Spektr (external) vs local mnemonic.
-        if (useHostMode) {
-          const account = keys.spektrAccount.value!
-          preferredName = account.name || keys.username.value || undefined
-          await start({
-            signalingMode: 'statement-store',
-            statementStoreEndpoint: endpoint,
-            signingMode: 'external',
-            externalSigner: {
-              address: account.address,
-              keyType: (account.type as 'sr25519' | 'ed25519' | 'ecdsa') || undefined,
-              sign: keys.spektrSignRaw,
-            },
-            peerId: userId.value,
-            username: preferredName,
-            onLog: addLog,
-          })
-        } else {
-          preferredName = keys.username.value || undefined
-          await start({
-            signalingMode: 'statement-store',
-            statementStoreEndpoint: endpoint,
-            signingMode: 'mnemonic',
-            mnemonic: keys.wallet.value!.mnemonic,
-            peerId: userId.value,
-            username: preferredName,
-            onLog: addLog,
-          })
-        }
+        await start({
+          statementStoreEndpoint: endpoint,
+          signingMode: 'mnemonic',
+          mnemonic: keys.wallet.value!.mnemonic,
+          peerId: userId.value,
+          username: preferredName,
+          onLog: addLog,
+        })
       } catch (error: any) {
         const message = error?.message || 'Unknown error'
         addLog(`Statement-store signaling failed: ${message}`, 'error')
@@ -685,7 +672,6 @@ watch(showOnboarding, (open, wasOpen) => {
   if (
     wasOpen &&
     !open &&
-    configuredMode === 'statement-store' &&
     !ready.value &&
     !connecting.value
   ) {
@@ -773,8 +759,8 @@ watch(showOnboarding, (open, wasOpen) => {
         </button>
       </div>
 
-      <!-- Top-right: Chain selector -->
-      <div class="absolute top-3 right-3 pointer-events-auto z-20">
+      <!-- Top-right: Chain selector (hidden when embedded in host) -->
+      <div v-if="!keys.isInHost.value" class="absolute top-3 right-3 pointer-events-auto z-20">
         <select
           :value="selectedEndpoint"
           @change="(e: Event) => switchChain((e.target as HTMLSelectElement).value)"
@@ -920,7 +906,7 @@ watch(showOnboarding, (open, wasOpen) => {
       <div class="text-center text-white/50">
         <template v-if="connectionError">
           <p class="text-red-400 text-sm mb-2">{{ connectionError }}</p>
-          <div class="flex flex-col items-center gap-2">
+          <div v-if="!keys.isInHost.value" class="flex flex-col items-center gap-2">
             <select
               :value="selectedEndpoint"
               @change="(e: Event) => switchChain((e.target as HTMLSelectElement).value)"
@@ -937,6 +923,17 @@ watch(showOnboarding, (open, wasOpen) => {
               Retry
             </button>
           </div>
+          <button
+            v-else
+            @click="connectionError = null; connectToChain(selectedEndpoint)"
+            class="mt-2 px-4 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs text-white/70 transition-colors"
+          >
+            Retry
+          </button>
+        </template>
+        <template v-else-if="keys.isInHost.value && connecting">
+          <div class="animate-spin w-12 h-12 border-4 border-white/30 border-t-white rounded-full mx-auto mb-3"></div>
+          <p>Waiting for host wallet...</p>
         </template>
         <template v-else>
           <div class="animate-spin w-12 h-12 border-4 border-white/30 border-t-white rounded-full mx-auto mb-3"></div>

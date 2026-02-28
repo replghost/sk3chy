@@ -34,7 +34,7 @@ export function useYDrawing(roomId: string) {
   const strokes = ref<Stroke[]>([])
   const peers = ref<any[]>([]) // awareness states
 
-  function start(roomOpts?: { signaling?: string[]; iceServers?: RTCIceServer[]; [key: string]: any }) {
+  function start(roomOpts?: { iceServers?: RTCIceServer[]; [key: string]: any }) {
     yroom = $createYRoom(roomId, roomOpts)
     // awareness: set initial presence
     yroom.awareness.setLocalState({

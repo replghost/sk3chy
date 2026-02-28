@@ -48,7 +48,7 @@ export class TurnCredentials {
     }
 
     // Prefer static TURN credentials when configured (e.g. Metered).
-    // This keeps statement-store mode aligned with y-webrtc ICE config.
+    // This keeps ICE config aligned across all peers.
     if (this.turnUsername && this.turnCredential) {
       const servers = this.getStaticTurnIceServers()
       this.cachedCredentials = servers

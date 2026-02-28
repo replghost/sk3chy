@@ -1109,7 +1109,6 @@ onMounted(() => {
 
   start({
     iceServers,
-    signalingMode: 'statement-store',
     statementStoreEndpoint: config.public.statementStoreWs as string,
     signingMode: (config.public.statementStoreSigningMode as string) || 'ephemeral',
     peerId: userId.value,

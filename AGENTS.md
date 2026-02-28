@@ -2,13 +2,11 @@
 
 ## repo map
 - `game-app/`: Nuxt 3 + Vue 3 frontend (WebRTC game, wallet/contract UI, SIWE).
-- `signaling-server/`: Bun/Node WebSocket signaling server for WebRTC rooms.
 - `contracts/`: Foundry Solidity contracts (Sk3chyGame) and deployment scripts.
 
 ## common commands (bun)
 - install: `bun install`
 - app dev: `bun dev` (game-app)
-- signaling dev: `bun dev:signaling`
 - build app: `bun build`
 - preview app: `bun preview`
 
@@ -18,12 +16,9 @@
 - deploy (asset hub testnet): see `contracts/README.md` / `contracts/DEPLOY_PASSET_HUB.md`
 
 ## environment variables (frontend)
-- `NUXT_PUBLIC_SIGNALING_MODE` (`webrtc` or `statement-store`)
-- `NUXT_PUBLIC_SIGNALING_SERVER` (ws/wss URL)
 - `NUXT_PUBLIC_STATEMENT_STORE_WS` (statement store WS endpoint)
-- `NUXT_PUBLIC_STATEMENT_STORE_SIGNING` (`ephemeral` or `wallet`)
+- `NUXT_PUBLIC_STATEMENT_STORE_SIGNING` (`ephemeral`, `wallet`, or `mnemonic`)
 - `NUXT_PUBLIC_TURN_USERNAME`, `NUXT_PUBLIC_TURN_CREDENTIAL`
-- `NUXT_PUBLIC_WC_PROJECT_ID` (WalletConnect)
 - `NUXT_PUBLIC_CONTRACT_ADDRESS`
 - `NUXT_PUBLIC_PINATA_JWT`, `NUXT_PUBLIC_PINATA_GATEWAY`
 - `NUXT_PUBLIC_NFT_CONTRACT_ADDRESS`
@@ -38,8 +33,7 @@ See `game-app/.env.example` and `game-app/nuxt.config.ts`.
 - UI entrypoints: `game-app/pages/game-contract/[id].vue`, `game-app/components/WalletConnect.vue`
 
 ## WebRTC notes
-- WebRTC P2P + Yjs; signaling via `y-webrtc` (server) or statement store.
-- Server signaling URL comes from `NUXT_PUBLIC_SIGNALING_SERVER`.
+- WebRTC P2P + Yjs; signaling exclusively via statement store (Substrate People chain).
 - Statement store signaling uses `NUXT_PUBLIC_STATEMENT_STORE_WS`.
 - Local testing works best in multiple tabs of the same browser.
 

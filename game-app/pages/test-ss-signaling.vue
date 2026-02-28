@@ -221,7 +221,6 @@ async function connectRoom() {
   }
 
   yroom = $createYRoom(roomId.value, {
-    signalingMode: 'statement-store',
     statementStoreEndpoint: config.public.statementStoreWs,
     account: activeAccount.value,
     signingMode: 'ephemeral',

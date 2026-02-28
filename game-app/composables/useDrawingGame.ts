@@ -255,7 +255,7 @@ export function useDrawingGame(roomId: string) {
     return { elected: winner.id === candidateId, hostId: winner.id }
   }
 
-  async function start(roomOpts?: { signaling?: string[]; iceServers?: RTCIceServer[]; [key: string]: any }) {
+  async function start(roomOpts?: { iceServers?: RTCIceServer[]; [key: string]: any }) {
     // Recreate from scratch when reconnecting with another signaling backend.
     if (yroom) {
       try { yroom?.provider?.destroy?.() } catch {}
