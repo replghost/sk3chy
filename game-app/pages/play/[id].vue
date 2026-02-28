@@ -585,19 +585,16 @@ async function connectToChain(endpoint: string) {
     }
 
     if (useHostMode) {
-      // Host provides the wallet — skip on-chain registration gate
+      // Host provides identity — use ephemeral key for statement-store signaling
+      // (host wallet accounts won't have on-chain allowance for statement store)
       onboardingRequireOnChain.value = false
       const account = keys.spektrAccount.value!
       preferredName = account.name || keys.username.value || undefined
+      addLog('Using ephemeral signing key (host mode)', 'info')
       try {
         await start({
           statementStoreEndpoint: endpoint,
-          signingMode: 'external',
-          externalSigner: {
-            address: account.address,
-            keyType: (account.type as 'sr25519' | 'ed25519' | 'ecdsa') || undefined,
-            sign: keys.spektrSignRaw,
-          },
+          signingMode: 'ephemeral',
           peerId: userId.value,
           username: preferredName,
           onLog: addLog,
