@@ -4,45 +4,36 @@
   "workspaces": {
     "": {
       "name": "gametime-phack",
-      "devDependencies": {
-        "@playwright/test": "^1.58.2",
-        "ws": "^8.19.0",
-      },
-    },
-    "game-app": {
-      "name": "@sk3chy/game-app",
-      "version": "0.0.0",
       "dependencies": {
         "@noble/curves": "^2.0.1",
         "@novasamatech/product-sdk": "^0.6.1",
         "@nuxt/ui": "^2.18.7",
         "@polkadot-api/descriptors": "file:.papi/descriptors",
-        "@polkadot-api/polkadot-sdk-compat": "latest",
-        "@polkadot-api/sdk-statement": "latest",
-        "@polkadot-api/substrate-bindings": "latest",
-        "@polkadot-api/substrate-client": "latest",
-        "@polkadot-api/utils": "latest",
-        "@polkadot-api/ws-provider": "latest",
-        "@polkadot-labs/hdkd": "latest",
-        "@polkadot-labs/hdkd-helpers": "latest",
-        "@polkadot/util": "latest",
-        "@polkadot/util-crypto": "latest",
-        "@reactive-dot/core": "latest",
-        "@scure/bip39": "latest",
-        "@tanstack/vue-query": ">=5.45.0",
-        "@wagmi/vue": "latest",
-        "add": "^2.0.6",
+        "@polkadot-api/polkadot-sdk-compat": "^2.4.1",
+        "@polkadot-api/sdk-statement": "^0.4.0",
+        "@polkadot-api/substrate-bindings": "^0.17.0",
+        "@polkadot-api/substrate-client": "^0.5.0",
+        "@polkadot-api/utils": "^0.2.0",
+        "@polkadot-api/ws-provider": "^0.7.5",
+        "@polkadot-labs/hdkd": "^0.0.26",
+        "@polkadot-labs/hdkd-helpers": "^0.0.27",
+        "@polkadot/util": "^14.0.1",
+        "@polkadot/util-crypto": "^14.0.1",
+        "@reactive-dot/core": "^0.71.1",
+        "@scure/bip39": "^2.0.1",
+        "@tanstack/vue-query": "^5.45.0",
+        "@wagmi/vue": "^0.5.0",
         "canvas-confetti": "^1.9.3",
         "crypto-hash": "^4.0.0",
-        "dot-connect": "latest",
+        "dot-connect": "^0.30.0",
         "lib0": "^0.2.117",
         "nanoid": "^5.1.6",
         "nuxt": "^3.11.2",
         "pinata": "^2.5.1",
-        "polkadot-api": "latest",
+        "polkadot-api": "^1.23.3",
         "uuid": "^13.0.0",
         "verifiablejs": "^1.1.0",
-        "viem": "latest",
+        "viem": "^2.46.3",
         "vite-plugin-top-level-await": "^1.6.0",
         "vite-plugin-wasm": "^3.5.0",
         "vue": ">=3.4.21",
@@ -52,7 +43,9 @@
         "yjs": "^13.6.27",
       },
       "devDependencies": {
+        "@playwright/test": "^1.58.2",
         "@types/canvas-confetti": "^1.9.0",
+        "ws": "^8.19.0",
       },
     },
   },
@@ -411,6 +404,8 @@
 
     "@polkadot-api/codegen": ["@polkadot-api/codegen@0.21.2", "", { "dependencies": { "@polkadot-api/ink-contracts": "0.4.6", "@polkadot-api/metadata-builders": "0.13.9", "@polkadot-api/metadata-compatibility": "0.4.4", "@polkadot-api/substrate-bindings": "0.17.0", "@polkadot-api/utils": "0.2.0" } }, "sha512-e1Of2TfB13YndPQ71WrtOIPfRrSlkG6wGprP8/VHC484kkt2JPDOY+io3NdPWkafDblDQ47aG0368sxT+4RSZA=="],
 
+    "@polkadot-api/descriptors": ["@polkadot-api/descriptors@file:.papi/descriptors", { "peerDependencies": { "polkadot-api": ">=1.21.0" } }],
+
     "@polkadot-api/ink-contracts": ["@polkadot-api/ink-contracts@0.4.6", "", { "dependencies": { "@polkadot-api/metadata-builders": "0.13.9", "@polkadot-api/substrate-bindings": "0.17.0", "@polkadot-api/utils": "0.2.0" } }, "sha512-wpFPa8CnGnmq+cFYMzuTEDmtt3ElBM0UWgTz4RpmI9E7knZ1ctWBhO7amXxOWcILqIG6sqWIE95x0cfF1PRcQg=="],
 
     "@polkadot-api/json-rpc-provider": ["@polkadot-api/json-rpc-provider@0.0.4", "", {}, "sha512-9cDijLIxzHOBuq6yHqpqjJ9jBmXrctjc1OFqU+tQrS96adQze3mTIH6DTgfb/0LMrqxzxffz1HQGrIlEH00WrA=="],
@@ -619,8 +614,6 @@
 
     "@sindresorhus/merge-streams": ["@sindresorhus/merge-streams@4.0.0", "", {}, "sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ=="],
 
-    "@sk3chy/game-app": ["@sk3chy/game-app@workspace:game-app"],
-
     "@speed-highlight/core": ["@speed-highlight/core@1.2.7", "", {}, "sha512-0dxmVj4gxg3Jg879kvFS/msl4s9F3T9UXC1InxgOf7t5NvcPD97u/WTA5vL/IxWHMn7qSxBozqrnnE2wvl1m8g=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.0.0", "", {}, "sha512-m2bOd0f2RT9k8QJx1JN85cZYyH1RqFBdlwtkSlf4tBDYLCiiZnv1fIIwacK6cqwXavOydf0NPToMQgpKq+dVlA=="],
@@ -788,8 +781,6 @@
     "acorn": ["acorn@8.15.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg=="],
 
     "acorn-import-attributes": ["acorn-import-attributes@1.9.5", "", { "peerDependencies": { "acorn": "^8" } }, "sha512-n02Vykv5uA3eHGM/Z2dQrcD56kL8TyDb2p1+0P83PClMnC/nc+anbQRhIOWnSq4Ke/KvDPrY3C9hDtC/A3eHnQ=="],
-
-    "add": ["add@2.0.6", "", {}, "sha512-j5QzrmsokwWWp6kUcJQySpbG+xfOBqqKnup3OIk1pz+kB/80SLorZ9V8zHFLO92Lcd+hbvq8bT+zOGoPkmBV0Q=="],
 
     "agent-base": ["agent-base@7.1.4", "", {}, "sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ=="],
 
@@ -2118,8 +2109,6 @@
     "@scure/bip32/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
 
     "@scure/bip32/@scure/base": ["@scure/base@1.2.6", "", {}, "sha512-g/nm5FgUa//MCj1gV09zTJTaM6KBAHqLN907YVQqf7zC49+DcO4B1so4ZX07Ef10Twr6nuqYEH9GEggFXA4Fmg=="],
-
-    "@sk3chy/game-app/@polkadot-api/descriptors": ["@polkadot-api/descriptors@file:game-app/.papi/descriptors", { "peerDependencies": { "polkadot-api": ">=1.21.0" } }],
 
     "@substrate/connect/smoldot": ["smoldot@2.0.26", "", { "dependencies": { "ws": "^8.8.1" } }, "sha512-F+qYmH4z2s2FK+CxGj8moYcd1ekSIKH8ywkdqlOz88Dat35iB1DIYL11aILN46YSGMzQW/lbJNS307zBSDN5Ig=="],
 

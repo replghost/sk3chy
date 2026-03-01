@@ -332,18 +332,52 @@ export function useDrawingGame(roomId: string) {
 
     // awareness update
     let lastPeerCount = 0
+    const STALE_PEER_MS = 30_000 // Remove awareness entries with no WebRTC link after 30s
+    const peerLastSeen = new Map<number, number>() // clientId → timestamp of last WebRTC-backed sighting
+
     const updatePeers = () => {
       const states = yroom.awareness.getStates()
+      const connectedPeerIds = yroom.provider.connectedPeers
+      const now = Date.now()
+      const localClientId = yroom.doc.clientID
+
+      // Track which awareness clientIds have a WebRTC connection
+      // A peer is "live" if it's us OR if it maps to a connected WebRTC peer
+      const peerClientMap = (yroom.provider as any).peerClientIds as Map<string, number> | undefined
+      const connectedClientIds = new Set<number>([localClientId])
+      if (peerClientMap) {
+        for (const [peerId, clientId] of peerClientMap) {
+          if (connectedPeerIds.has(peerId)) {
+            connectedClientIds.add(clientId)
+          }
+        }
+      }
 
       // Deduplicate peers by user ID (keep the most recent one based on clientID)
       const peerMap = new Map()
       states.forEach((peer: any, clientId: number) => {
-        if (peer.id) {
-          const existing = peerMap.get(peer.id)
-          // Keep the peer with higher clientID (more recent connection)
-          if (!existing || clientId > existing.clientId) {
-            peerMap.set(peer.id, { ...peer, clientId })
+        if (!peer.id) return
+
+        // Update last-seen timestamp for connected peers
+        if (connectedClientIds.has(clientId)) {
+          peerLastSeen.set(clientId, now)
+        }
+
+        // Skip stale peers: no WebRTC connection and not seen recently
+        if (!connectedClientIds.has(clientId)) {
+          const lastSeen = peerLastSeen.get(clientId) || 0
+          if (now - lastSeen > STALE_PEER_MS) {
+            // Actively remove this stale awareness entry
+            awarenessProtocol.removeAwarenessStates(yroom.awareness, [clientId], 'stale-cleanup')
+            peerLastSeen.delete(clientId)
+            return
           }
+        }
+
+        const existing = peerMap.get(peer.id)
+        // Keep the peer with higher clientID (more recent connection)
+        if (!existing || clientId > existing.clientId) {
+          peerMap.set(peer.id, { ...peer, clientId })
         }
       })
 

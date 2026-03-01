@@ -1,19 +1,38 @@
+# Dependencies
 node_modules/
+
+# Nuxt dev/build outputs
+.nuxt/
+.output/
+.nitro/
+.cache/
+.data/
 dist/
-.DS_Store
+
+# Logs
 *.log
+logs/
+
+# Environment
 .env
-.env.local
+.env.*
+!.env.example
+
+# OS / Editor
+.DS_Store
+.fleet/
+.idea/
 .vscode/
 .vercel/
-.nitro/
 
-game-app/.nuxt/
-game-app/.output/
+# Test artifacts
+test-results/
+.playwright-mcp/
 
-temp
+# Misc
+temp/
 
-# Foundry
+# Foundry (if contracts return)
 contracts/cache/
 contracts/out/
 contracts/lib/

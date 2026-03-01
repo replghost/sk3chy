@@ -1,52 +1,50 @@
 # sk3tchy agent notes
 
 ## repo map
-- `game-app/`: Nuxt 3 + Vue 3 frontend (WebRTC game, wallet/contract UI, SIWE).
-- `contracts/`: Foundry Solidity contracts (Sk3chyGame) and deployment scripts.
+- Root is a Nuxt 3 + Vue 3 app (WebRTC game, wallet/contract UI)
+- `pages/` — Game pages (`play/[id]`, `game-subs/[id]`, etc.)
+- `composables/` — Vue composables (game logic, blockchain, auth)
+- `lib/` — Framework-agnostic modules (ss-webrtc signaling, blockchain client)
+- `utils/` — Pure utilities (word dictionaries, chain config, ABIs)
+- `tests/` — Playwright E2E tests
+- `docs/` — Development decision logs and screenshots
 
 ## common commands (bun)
 - install: `bun install`
-- app dev: `bun dev` (game-app)
-- build app: `bun build`
-- preview app: `bun preview`
+- dev: `bun dev`
+- build: `bun build`
+- preview: `bun preview`
+- test: `bun test` (Playwright E2E across Chromium + Firefox)
 
-## contracts (foundry)
-- build: `forge build`
-- test: `forge test`
-- deploy (asset hub testnet): see `contracts/README.md` / `contracts/DEPLOY_PASSET_HUB.md`
-
-## environment variables (frontend)
-- `NUXT_PUBLIC_STATEMENT_STORE_WS` (statement store WS endpoint)
+## environment variables
+- `NUXT_PUBLIC_STATEMENT_STORE_WS` (statement store WS endpoint, default: PreviewNet)
 - `NUXT_PUBLIC_STATEMENT_STORE_SIGNING` (`ephemeral`, `wallet`, or `mnemonic`)
 - `NUXT_PUBLIC_TURN_USERNAME`, `NUXT_PUBLIC_TURN_CREDENTIAL`
 - `NUXT_PUBLIC_CONTRACT_ADDRESS`
 - `NUXT_PUBLIC_PINATA_JWT`, `NUXT_PUBLIC_PINATA_GATEWAY`
 - `NUXT_PUBLIC_NFT_CONTRACT_ADDRESS`
-See `game-app/.env.example` and `game-app/nuxt.config.ts`.
+See `.env.example` and `nuxt.config.ts`.
 
-## current blockchain integration (EVM)
+## blockchain integration
 - EVM wallet stack: `@wagmi/vue` + `viem`
-  - config: `game-app/wagmi.ts`, `game-app/plugins/wagmi.ts`
-  - chain: `game-app/utils/chains.ts` (Passet Hub EVM RPC; deprecated/temporary)
-- contract use: `game-app/composables/useGameContract.ts`
-- SIWE: `game-app/composables/useSIWE.ts`, `game-app/pages/game-siwe/[id].vue`, `game-app/pages/siwe.vue`
-- UI entrypoints: `game-app/pages/game-contract/[id].vue`, `game-app/components/WalletConnect.vue`
+  - config: `wagmi.ts`, `plugins/wagmi.ts`
+  - chain: `utils/chains.ts` (Paseo Asset Hub)
+- contract use: `composables/useGameContract.ts`
 
 ## WebRTC notes
 - WebRTC P2P + Yjs; signaling exclusively via statement store (Substrate People chain).
-- Statement store signaling uses `NUXT_PUBLIC_STATEMENT_STORE_WS`.
+- Default endpoint: PreviewNet (`wss://previewnet.substrate.dev/people`). PoP People also available.
 - Local testing works best in multiple tabs of the same browser.
 
 ## work conventions
 - Keep changes scoped; this repo has no enforced lint/format step.
-- Prefer updating docs alongside workflow changes (README + `game-app/CONTRACT_INTEGRATION.md`).
+- Prefer updating docs alongside workflow changes.
 - Never store secrets or seed phrases in source control (env files, commits, docs).
 
 ## planned direction (user request)
 - Target Paseo Asset Hub with contracts on `pallet-revive`:
   - allowed: Solidity or Rust on `pallet-revive`
   - do not use ink!
-- Do not use Passet Hub (temporary/decommissioning); use Paseo Asset Hub.
 - Migrate from EVM wallets to Substrate wallets; target common wallets
   - Polkadot{.js} extension, Talisman, Subwallet
 - Use `mapAddress` to interact with `pallet-revive` contracts.

@@ -4,7 +4,6 @@
     <NuxtPage />
     <AppFooter v-if="!keys.isInHost.value" />
     <OnboardingModal
-      v-if="!keys.isInHost.value"
       v-model="showOnboarding"
       :require-on-chain="onboardingRequireOnChain"
       :chain-endpoint="onboardingChainEndpoint"

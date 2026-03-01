@@ -26,6 +26,9 @@ export class SSYjsProvider {
   private peers: Set<string> = new Set()
   private peerClientIds: Map<string, number> = new Map()
 
+  /** Set of currently connected WebRTC peer IDs */
+  get connectedPeers(): ReadonlySet<string> { return this.peers }
+
   private updateHandler: ((update: Uint8Array, origin: any) => void) | null = null
   private awarenessHandler:
     | ((changes: { added: number[]; updated: number[]; removed: number[] }, origin: any) => void)

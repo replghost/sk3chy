@@ -591,24 +591,55 @@ async function connectToChain(endpoint: string) {
     }
 
     if (useHostMode) {
-      // Host provides identity — use ephemeral key for statement-store signaling
-      // (host wallet accounts won't have on-chain allowance for statement store)
-      onboardingRequireOnChain.value = false
+      // Host mode: prefer local browser wallet if registered, else ephemeral
       const account = keys.spektrAccount.value!
-      preferredName = account.name || keys.username.value || undefined
-      addLog('Using ephemeral signing key (host mode)', 'info')
-      try {
-        await start({
-          statementStoreEndpoint: endpoint,
-          signingMode: 'ephemeral',
-          peerId: userId.value,
-          username: preferredName,
-          onLog: addLog,
-        })
-      } catch (error: any) {
-        const message = error?.message || 'Unknown error'
-        addLog(`Statement-store signaling failed: ${message}`, 'error')
-        throw new Error(message)
+      registration.init(endpoint)
+
+      if (registration.isRegisteredForCurrentEndpoint.value && keys.wallet.value?.mnemonic) {
+        // User has a registered local wallet for this chain — use it
+        preferredName = keys.username.value || account.name || undefined
+        addLog('Using registered browser wallet for signaling (host mode)', 'info')
+        onboardingRequireOnChain.value = false
+        try {
+          await start({
+            statementStoreEndpoint: endpoint,
+            signingMode: 'mnemonic',
+            mnemonic: keys.wallet.value.mnemonic,
+            peerId: userId.value,
+            username: preferredName,
+            onLog: addLog,
+          })
+        } catch (error: any) {
+          const message = error?.message || 'Unknown error'
+          addLog(`Statement-store signaling failed: ${message}`, 'error')
+          throw new Error(message)
+        }
+      } else {
+        // No registered wallet — try ephemeral, fall back to registration if noAllowance
+        preferredName = account.name || keys.username.value || undefined
+        addLog('Using ephemeral signing key (host mode)', 'info')
+        onboardingRequireOnChain.value = false
+        try {
+          await start({
+            statementStoreEndpoint: endpoint,
+            signingMode: 'ephemeral',
+            peerId: userId.value,
+            username: preferredName,
+            onLog: addLog,
+          })
+        } catch (error: any) {
+          const message = error?.message || 'Unknown error'
+          if (message.includes('statement-store allowance')) {
+            // Ephemeral key has no allowance — require on-chain registration
+            addLog('Ephemeral key rejected, switching to on-chain registration', 'warning')
+            onboardingRequireOnChain.value = true
+            onboardingChainEndpoint.value = endpoint
+            showOnboarding.value = true
+            throw new Error('On-chain registration required for this chain before joining')
+          }
+          addLog(`Statement-store signaling failed: ${message}`, 'error')
+          throw new Error(message)
+        }
       }
     } else {
       // Standalone mode — require on-chain registration

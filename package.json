@@ -1,18 +1,58 @@
 {
   "name": "sk3chy",
-  "version": "1.0.0",
   "private": true,
-  "workspaces": [
-    "game-app"
-  ],
+  "version": "1.0.0",
+  "type": "module",
   "scripts": {
-    "dev": "bun --filter game-app dev",
-    "build": "bun --filter game-app build",
-    "preview": "bun --filter game-app preview"
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui"
   },
-  "packageManager": "bun@1.0.0",
+  "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "@novasamatech/product-sdk": "^0.6.1",
+    "@nuxt/ui": "^2.18.7",
+    "@polkadot-api/descriptors": "file:.papi/descriptors",
+    "@polkadot-api/polkadot-sdk-compat": "^2.4.1",
+    "@polkadot-api/sdk-statement": "^0.4.0",
+    "@polkadot-api/substrate-bindings": "^0.17.0",
+    "@polkadot-api/substrate-client": "^0.5.0",
+    "@polkadot-api/utils": "^0.2.0",
+    "@polkadot-api/ws-provider": "^0.7.5",
+    "@polkadot-labs/hdkd": "^0.0.26",
+    "@polkadot-labs/hdkd-helpers": "^0.0.27",
+    "@polkadot/util": "^14.0.1",
+    "@polkadot/util-crypto": "^14.0.1",
+    "@reactive-dot/core": "^0.71.1",
+    "@scure/bip39": "^2.0.1",
+    "@tanstack/vue-query": "^5.45.0",
+    "@wagmi/vue": "^0.5.0",
+    "canvas-confetti": "^1.9.3",
+    "crypto-hash": "^4.0.0",
+    "dot-connect": "^0.30.0",
+    "lib0": "^0.2.117",
+    "nanoid": "^5.1.6",
+    "nuxt": "^3.11.2",
+    "pinata": "^2.5.1",
+    "polkadot-api": "^1.23.3",
+    "uuid": "^13.0.0",
+    "verifiablejs": "^1.1.0",
+    "viem": "^2.46.3",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.5.0",
+    "vue": ">=3.4.21",
+    "vue-router": "^4.3.2",
+    "y-indexeddb": "^9.0.12",
+    "y-protocols": "^1.0.6",
+    "yjs": "^13.6.27"
+  },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
+    "@types/canvas-confetti": "^1.9.0",
     "ws": "^8.19.0"
   }
 }
