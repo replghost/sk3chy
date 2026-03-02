@@ -553,18 +553,28 @@ export function useDrawingGame(roomId: string) {
 
     if (isFirstRound) {
       // Round 1: build draw order, init scores
-      const playerIds = peers.value.map(p => p.id)
+      // Read awareness directly (not the reactive peers ref which may lag behind)
+      const awarenessPlayerIds: string[] = []
+      yroom.awareness.getStates().forEach((state: any) => {
+        if (state.id) awarenessPlayerIds.push(state.id)
+      })
+      // Deduplicate (a reconnecting peer may have multiple awareness entries)
+      const playerIds = [...new Set(awarenessPlayerIds)]
       // Shuffle draw order
       const shuffled = [...playerIds]
       for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))
         ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
       }
-      // Init scores for all players
+      // Init scores for all players (check both awareness and peers for display names)
       const scores: Record<string, { name: string; score: number }> = {}
+      const awarenessNames = new Map<string, string>()
+      yroom.awareness.getStates().forEach((state: any) => {
+        if (state.id && state.displayName) awarenessNames.set(state.id, state.displayName)
+      })
       for (const pid of playerIds) {
-        const peer = peers.value.find(p => p.id === pid)
-        scores[pid] = { name: peer?.displayName || 'Anonymous', score: 0 }
+        const name = awarenessNames.get(pid) || peers.value.find(p => p.id === pid)?.displayName || 'Anonymous'
+        scores[pid] = { name, score: 0 }
       }
 
       addLog(`Game started — ${shuffled.length} rounds (${gameState.value.duration}s, ${gameState.value.difficulty})`, 'success')
