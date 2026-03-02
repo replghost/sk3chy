@@ -3,6 +3,7 @@ import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 
 const props = defineProps<{
   strokes: any[],            // from composable (Y.Array -> toArray())
+  liveStrokes?: any[],       // in-progress strokes from remote peers (awareness)
   peers: any[],              // awareness states
   brushColor: string,
   brushSize: number,
@@ -126,6 +127,24 @@ function renderAll() {
     ctx.stroke()
   }
 
+  // Draw live in-progress strokes from remote peers
+  if (props.liveStrokes) {
+    for (const ls of props.liveStrokes) {
+      const pts = ls.points
+      if (!pts?.length) continue
+      ctx.lineWidth = ls.size
+      ctx.lineJoin = 'round'
+      ctx.lineCap = 'round'
+      ctx.strokeStyle = ls.color
+      ctx.beginPath()
+      ctx.moveTo(pts[0].x * w, pts[0].y * h)
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x * w, pts[i].y * h)
+      }
+      ctx.stroke()
+    }
+  }
+
   // Draw current stroke being drawn (scale from normalized 0-1 to canvas size)
   if (drawing && currentStroke.length > 0) {
     ctx.lineWidth = props.brushSize
@@ -165,6 +184,7 @@ onBeforeUnmount(() => {
 })
 
 watch(() => props.strokes, renderAll, { deep: true })
+watch(() => props.liveStrokes, renderAll, { deep: true })
 watch(() => props.peers, renderAll, { deep: true })
 </script>
 

@@ -114,12 +114,18 @@ export function useDrawingGame(roomId: string) {
   let yroom: any
   let pending: Point[] = []
   let awarenessInterval: ReturnType<typeof setInterval> | null = null
+  let lastLiveStrokeBroadcast = 0
+  const LIVE_STROKE_THROTTLE_MS = 50
 
   const strokes = ref<Stroke[]>([])
   const lobbyStrokes = ref<Stroke[]>([])
   const peers = ref<any[]>([])
   const guesses = ref<Guess[]>([])
   let lobbyPending: Point[] = []
+
+  // Live in-progress strokes from remote peers (via awareness)
+  // Updated directly from awareness change events for low-latency rendering
+  const liveStrokes = ref<Array<{ points: Array<{x: number; y: number}>; color: string; size: number }>>([])
 
   // Check if current user is the host
   const isHost = computed(() => gameState.value.hostId === userId.value)
@@ -294,16 +300,22 @@ export function useDrawingGame(roomId: string) {
     const hostEpoch = (ygame.get('hostEpoch') as number | null) ?? 0
 
     // Detect stale IDB host entries (older than 5 minutes = likely a previous session)
+    // BUT only treat as stale if the host is NOT present in awareness (actually connected)
     const SESSION_STALENESS_MS = 5 * 60 * 1000
-    const isStale = !hostSetAt || (Date.now() - hostSetAt > SESSION_STALENESS_MS)
+    const timestampStale = !hostSetAt || (Date.now() - hostSetAt > SESSION_STALENESS_MS)
+    let hostInAwareness = false
+    yroom.awareness.getStates().forEach((state: any) => {
+      if (state.id === existingHostId) hostInAwareness = true
+    })
+    const isStale = timestampStale && !hostInAwareness
 
     if (existingHostId && !isStale) {
-      console.log('[DrawingGame] Found existing host:', existingHostId)
+      console.log('[DrawingGame] Found existing host:', existingHostId, hostInAwareness ? '(in awareness)' : '(timestamp valid)')
       addLog(`Joined room (host: ${existingHostId.slice(0, 10)}...)`, 'info')
       syncGameState()
     } else {
       // No valid host — run election
-      console.log('[DrawingGame] No valid host, running election (stale:', isStale, ')')
+      console.log('[DrawingGame] No valid host, running election (stale:', isStale, 'hostInAwareness:', hostInAwareness, ')')
       await runElection(hostEpoch + 1)
     }
 
@@ -392,6 +404,17 @@ export function useDrawingGame(roomId: string) {
       checkHostPresence()
     }
     yroom.awareness.on('change', updatePeers)
+    // Lightweight listener for real-time stroke streaming (separate from heavy updatePeers)
+    yroom.awareness.on('change', () => {
+      const strks: typeof liveStrokes.value = []
+      yroom.awareness.getStates().forEach((state: any) => {
+        if (state.id === userId.value) return
+        if (state.liveStroke?.points?.length) {
+          strks.push(state.liveStroke)
+        }
+      })
+      liveStrokes.value = strks
+    })
     // Also update when WebRTC peers connect/disconnect (awareness sync may lag)
     yroom.provider.on('peers', () => {
       setTimeout(updatePeers, 200)
@@ -832,6 +855,20 @@ export function useDrawingGame(roomId: string) {
   function addPoint(x: number, y: number) {
     if (!canDraw.value) return
     pending.push({ x, y, t: performance.now() })
+    broadcastLiveStroke()
+  }
+
+  function broadcastLiveStroke() {
+    const now = performance.now()
+    if (now - lastLiveStrokeBroadcast < LIVE_STROKE_THROTTLE_MS) return
+    lastLiveStrokeBroadcast = now
+    if (!yroom || !pending.length) return
+    // Broadcast in-progress stroke as ephemeral awareness data
+    yroom.awareness.setLocalStateField('liveStroke', {
+      points: pending.map(p => ({ x: p.x, y: p.y })),
+      color: brushColor.value,
+      size: brushSize.value,
+    })
   }
 
   function commitStroke() {
@@ -848,11 +885,13 @@ export function useDrawingGame(roomId: string) {
     yroom.doc.transact(() => {
       yroom.strokes.push([stroke])
     })
+    // Clear live stroke from awareness now that it's committed
+    yroom.awareness.setLocalStateField('liveStroke', null)
   }
 
   function setCursor(pos: { x: number; y: number } | null) {
-    // Don't broadcast cursor
-    return
+    if (!yroom) return
+    yroom.awareness.setLocalStateField('cursor', pos)
   }
 
   function setDisplayName(name: string) {
@@ -882,6 +921,19 @@ export function useDrawingGame(roomId: string) {
 
   function addLobbyPoint(x: number, y: number) {
     lobbyPending.push({ x, y, t: performance.now() })
+    broadcastLobbyLiveStroke()
+  }
+
+  function broadcastLobbyLiveStroke() {
+    const now = performance.now()
+    if (now - lastLiveStrokeBroadcast < LIVE_STROKE_THROTTLE_MS) return
+    lastLiveStrokeBroadcast = now
+    if (!yroom || !lobbyPending.length) return
+    yroom.awareness.setLocalStateField('liveStroke', {
+      points: lobbyPending.map(p => ({ x: p.x, y: p.y })),
+      color: brushColor.value,
+      size: brushSize.value,
+    })
   }
 
   function commitLobbyStroke() {
@@ -899,6 +951,7 @@ export function useDrawingGame(roomId: string) {
       const lobbyArray = yroom.doc.getArray('lobbyStrokes')
       lobbyArray.push([stroke])
     })
+    yroom.awareness.setLocalStateField('liveStroke', null)
   }
 
   function clearLobbyStrokes() {
@@ -958,7 +1011,7 @@ export function useDrawingGame(roomId: string) {
 
   return {
     // state
-    ready, strokes, lobbyStrokes, peers, guesses, brushColor, brushSize, userId, displayName,
+    ready, strokes, lobbyStrokes, liveStrokes, peers, guesses, brushColor, brushSize, userId, displayName,
     isHost, isDrawer, canDraw, gameState, timeRemaining, isRoomFull, canJoin, isSpectator, hintLetters,
     electionInProgress,
     // constants

@@ -21,7 +21,7 @@ const onboardingRequireOnChain = useState<boolean>('onboardingRequireOnChain', (
 const onboardingChainEndpoint = useState<string>('onboardingChainEndpoint', () => '')
 
 const {
-  ready, strokes, lobbyStrokes, peers, guesses, brushColor, brushSize, userId, displayName,
+  ready, strokes, lobbyStrokes, liveStrokes, peers, guesses, brushColor, brushSize, userId, displayName,
   isHost, isDrawer, canDraw, gameState, timeRemaining, isRoomFull, canJoin, isSpectator, hintLetters,
   maxPlayers, electionInProgress,
   start, addPoint, commitStroke, setCursor, setDisplayName, sendGuess,
@@ -760,6 +760,7 @@ watch(showOnboarding, (open, wasOpen) => {
     <div v-if="ready" class="flex-1 relative min-h-0 m-2 rounded-xl border border-white/10 overflow-hidden">
       <YCanvas
         :strokes="lobbyStrokes"
+        :liveStrokes="liveStrokes"
         :peers="peers"
         :canDraw="true"
         :fillContainer="true"
@@ -1170,6 +1171,7 @@ watch(showOnboarding, (open, wasOpen) => {
         ref="canvasRef"
         v-if="ready"
         :strokes="strokes"
+        :liveStrokes="liveStrokes"
         :peers="peers"
         :canDraw="canDraw"
         :fillContainer="true"

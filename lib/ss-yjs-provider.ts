@@ -123,7 +123,9 @@ export class SSYjsProvider {
 
   private bindAwarenessUpdates(): void {
     this.awarenessHandler = (changes, origin) => {
-      if (origin !== this) return
+      // Broadcast local state changes and our own cleanup operations.
+      // Skip re-broadcasting updates received from remote peers (origin = peerId string).
+      if (origin !== 'local' && origin !== this) return
 
       const changedClients = changes.added.concat(changes.updated, changes.removed)
       if (changedClients.length === 0) return
