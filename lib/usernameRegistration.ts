@@ -233,12 +233,20 @@ export async function pollForRegistration(
   username: string,
   candidateAccountId: string,
   maxAttempts: number = 60,
-  onAttempt?: (attempt: number, maxAttempts: number) => void
+  onAttempt?: (attempt: number, maxAttempts: number) => void,
+  signal?: AbortSignal
 ): Promise<UsernameSearchResult> {
   return new Promise((resolve, reject) => {
     let attempts = 0;
 
+    // If the caller aborts (e.g. timeout wrapper), stop the polling loop
+    signal?.addEventListener('abort', () => {
+      reject(signal.reason ?? new Error('Polling aborted'));
+    }, { once: true });
+
     const poll = async () => {
+      if (signal?.aborted) return;
+
       attempts++;
       onAttempt?.(attempts, maxAttempts);
 
@@ -252,7 +260,17 @@ export async function pollForRegistration(
       }
 
       try {
-        const exists = await checkLitePersonExists(candidateAccountId);
+        // Per-query timeout: if chain connection dropped, don't hang forever.
+        // Clear the timer when the query resolves to prevent leaks.
+        let queryTimer: ReturnType<typeof setTimeout> | undefined;
+        const exists = await Promise.race([
+          checkLitePersonExists(candidateAccountId),
+          new Promise<boolean>((_, rej) => {
+            queryTimer = setTimeout(() => rej(new Error('Query timeout')), 10_000);
+          })
+        ]).finally(() => {
+          if (queryTimer !== undefined) clearTimeout(queryTimer);
+        });
 
         if (exists) {
           resolve({
@@ -266,7 +284,9 @@ export async function pollForRegistration(
         console.error("Polling request failed:", error);
       }
 
-      setTimeout(poll, 2000);
+      if (!signal?.aborted) {
+        setTimeout(poll, 2000);
+      }
     };
 
     poll();

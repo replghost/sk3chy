@@ -37,7 +37,7 @@ const isRegisteredForCurrentEndpoint = computed(() => {
 })
 
 let checkTimeout: ReturnType<typeof setTimeout> | null = null
-let currentEndpoint = ''
+const currentEndpoint = ref('')
 let registrationInFlight = false
 
 function resetProgress() {
@@ -65,7 +65,7 @@ export function useUsernameRegistration() {
     resetProgress()
     if (endpoint) {
       setEndpoint(endpoint)
-      currentEndpoint = endpoint
+      currentEndpoint.value = endpoint
     }
     // Restore from localStorage
     const stored = localStorage.getItem(STORAGE_KEY_FULL_USERNAME)
@@ -73,7 +73,7 @@ export function useUsernameRegistration() {
     registeredEndpoint.value = storedEndpoint
 
     chainRegistered.value = localStorage.getItem(STORAGE_KEY_REGISTERED) === 'true'
-    const endpointMatches = !currentEndpoint || !storedEndpoint || storedEndpoint === currentEndpoint
+    const endpointMatches = !currentEndpoint.value || !storedEndpoint || storedEndpoint === currentEndpoint.value
 
     if (stored) {
       fullUsername.value = stored
@@ -149,29 +149,39 @@ export function useUsernameRegistration() {
       const response = await registerUsername(mnemonic, username, options)
       fullUsername.value = response.username
 
-      // Poll for on-chain confirmation
+      // Poll for on-chain confirmation (timeout after 90s — chain query can hang if connection dropped)
       status.value = 'polling'
       registrationProgress.value = Math.max(registrationProgress.value, 95)
       registrationProgressLabel.value = 'Verifying username assignment...'
       registrationEtaSeconds.value = 8
       const rawParams = await deriveAttestationParamsRaw(mnemonic, response.username)
-      await pollForRegistration(
-        response.username,
-        rawParams.candidateAccountId,
-        30,
-        (attempt) => {
-          registrationProgress.value = Math.max(registrationProgress.value, 95 + Math.min(attempt, 4))
-          registrationEtaSeconds.value = Math.max(2, 8 - attempt * 2)
-        }
-      )
+      const pollAbort = new AbortController()
+      await withTimeout(
+        pollForRegistration(
+          response.username,
+          rawParams.candidateAccountId,
+          30,
+          (attempt) => {
+            registrationProgress.value = Math.max(registrationProgress.value, 95 + Math.min(attempt, 4))
+            registrationEtaSeconds.value = Math.max(2, 8 - attempt * 2)
+          },
+          pollAbort.signal
+        ),
+        90_000,
+        'Registration verification timed out — chain query may have stalled'
+      ).catch((err) => {
+        // Abort the polling loop so it doesn't keep running after timeout
+        pollAbort.abort(err)
+        throw err
+      })
 
       // Save to localStorage
       localStorage.setItem(STORAGE_KEY_FULL_USERNAME, response.username)
       localStorage.setItem(STORAGE_KEY_REGISTERED, 'true')
       chainRegistered.value = true
-      if (currentEndpoint) {
-        localStorage.setItem(STORAGE_KEY_REGISTERED_ENDPOINT, currentEndpoint)
-        registeredEndpoint.value = currentEndpoint
+      if (currentEndpoint.value) {
+        localStorage.setItem(STORAGE_KEY_REGISTERED_ENDPOINT, currentEndpoint.value)
+        registeredEndpoint.value = currentEndpoint.value
       }
       registrationProgress.value = 100
       registrationProgressLabel.value = 'Registration complete'

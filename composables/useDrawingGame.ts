@@ -2,6 +2,7 @@ import { onMounted, onBeforeUnmount, ref, computed } from 'vue'
 import { useNuxtApp } from '#app'
 import { nanoid } from 'nanoid'
 import * as Y from 'yjs'
+import * as awarenessProtocol from 'y-protocols/awareness'
 import { sha256 } from 'crypto-hash'
 import { getRandomWords, type DifficultyLevel } from '~/utils/wordDictionary'
 import { useLogger } from '~/composables/useLogger'
@@ -116,6 +117,9 @@ export function useDrawingGame(roomId: string) {
   let awarenessInterval: ReturnType<typeof setInterval> | null = null
   let lastLiveStrokeBroadcast = 0
   const LIVE_STROKE_THROTTLE_MS = 50
+  // Awareness listener references (set in start(), cleaned up in teardown())
+  let awarenessUpdatePeersHandler: (() => void) | null = null
+  let awarenessLiveStrokesHandler: (() => void) | null = null
 
   const strokes = ref<Stroke[]>([])
   const lobbyStrokes = ref<Stroke[]>([])
@@ -355,7 +359,7 @@ export function useDrawingGame(roomId: string) {
 
       // Track which awareness clientIds have a WebRTC connection
       // A peer is "live" if it's us OR if it maps to a connected WebRTC peer
-      const peerClientMap = (yroom.provider as any).peerClientIds as Map<string, number> | undefined
+      const peerClientMap = yroom.provider.peerClientIdMap
       const connectedClientIds = new Set<number>([localClientId])
       if (peerClientMap) {
         for (const [peerId, clientId] of peerClientMap) {
@@ -364,6 +368,9 @@ export function useDrawingGame(roomId: string) {
           }
         }
       }
+
+      // Collect stale clientIds to remove after iteration (avoid mutating map during forEach)
+      const staleClientIds: number[] = []
 
       // Deduplicate peers by user ID (keep the most recent one based on clientID)
       const peerMap = new Map()
@@ -379,8 +386,7 @@ export function useDrawingGame(roomId: string) {
         if (!connectedClientIds.has(clientId)) {
           const lastSeen = peerLastSeen.get(clientId) || 0
           if (now - lastSeen > STALE_PEER_MS) {
-            // Actively remove this stale awareness entry
-            awarenessProtocol.removeAwarenessStates(yroom.awareness, [clientId], 'stale-cleanup')
+            staleClientIds.push(clientId)
             peerLastSeen.delete(clientId)
             return
           }
@@ -393,6 +399,13 @@ export function useDrawingGame(roomId: string) {
         }
       })
 
+      // Batch-remove stale awareness entries after iteration completes.
+      // Origin 'stale-cleanup' distinguishes this from normal peer disconnects so the
+      // awareness broadcast filter in SSYjsProvider can decide whether to re-broadcast.
+      if (staleClientIds.length > 0) {
+        awarenessProtocol.removeAwarenessStates(yroom.awareness, staleClientIds, 'stale-cleanup')
+      }
+
       const newPeers = Array.from(peerMap.values())
       if (newPeers.length !== lastPeerCount) {
         addLog(`Players: ${newPeers.length}`, 'info')
@@ -403,20 +416,42 @@ export function useDrawingGame(roomId: string) {
       // Check if host is still connected
       checkHostPresence()
     }
-    yroom.awareness.on('change', updatePeers)
-    // Lightweight listener for real-time stroke streaming (separate from heavy updatePeers)
-    yroom.awareness.on('change', () => {
-      const strks: typeof liveStrokes.value = []
-      yroom.awareness.getStates().forEach((state: any) => {
-        if (state.id === userId.value) return
-        if (state.liveStroke?.points?.length) {
-          strks.push(state.liveStroke)
-        }
+
+    // rAF guard: extract liveStrokes at most once per animation frame
+    let liveStrokeRafPending = false
+    const updateLiveStrokes = () => {
+      if (liveStrokeRafPending) return
+      liveStrokeRafPending = true
+      requestAnimationFrame(() => {
+        liveStrokeRafPending = false
+        const strks: typeof liveStrokes.value = []
+        yroom.awareness.getStates().forEach((state: any) => {
+          if (state.id === userId.value) return
+          if (state.liveStroke?.points?.length) {
+            strks.push(state.liveStroke)
+          }
+        })
+        liveStrokes.value = strks
       })
-      liveStrokes.value = strks
-    })
+    }
+
+    // Store handler references so we can remove them on teardown
+    awarenessUpdatePeersHandler = updatePeers
+    awarenessLiveStrokesHandler = updateLiveStrokes
+    yroom.awareness.on('change', updatePeers)
+    yroom.awareness.on('change', updateLiveStrokes)
     // Also update when WebRTC peers connect/disconnect (awareness sync may lag)
     yroom.provider.on('peers', () => {
+      // Clean peerLastSeen entries for peers that disconnected normally
+      const currentPeerClientMap = yroom.provider.peerClientIdMap
+      const currentConnected = yroom.provider.connectedPeers
+      if (currentPeerClientMap) {
+        for (const [peerId, clientId] of currentPeerClientMap) {
+          if (!currentConnected.has(peerId)) {
+            peerLastSeen.delete(clientId)
+          }
+        }
+      }
       setTimeout(updatePeers, 200)
     })
     // Read initial states (we may have missed change events during the 500ms sync delay)
@@ -1010,6 +1045,19 @@ export function useDrawingGame(roomId: string) {
     if (awarenessInterval) {
       clearInterval(awarenessInterval)
       awarenessInterval = null
+    }
+    // Remove awareness listeners to prevent leaks on reconnect/teardown
+    if (yroom?.awareness) {
+      if (awarenessUpdatePeersHandler) {
+        yroom.awareness.off('change', awarenessUpdatePeersHandler)
+        awarenessUpdatePeersHandler = null
+      }
+      if (awarenessLiveStrokesHandler) {
+        yroom.awareness.off('change', awarenessLiveStrokesHandler)
+        awarenessLiveStrokesHandler = null
+      }
+      // Clear local liveStroke so other peers stop rendering our in-progress stroke
+      try { yroom.awareness.setLocalStateField('liveStroke', null) } catch {}
     }
     try {
       yroom?.provider?.destroy()

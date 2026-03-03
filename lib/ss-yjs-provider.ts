@@ -29,6 +29,9 @@ export class SSYjsProvider {
   /** Set of currently connected WebRTC peer IDs */
   get connectedPeers(): ReadonlySet<string> { return this.peers }
 
+  /** Map of WebRTC peerId → Yjs clientId (for stale peer detection) */
+  get peerClientIdMap(): ReadonlyMap<string, number> { return this.peerClientIds }
+
   private updateHandler: ((update: Uint8Array, origin: any) => void) | null = null
   private awarenessHandler:
     | ((changes: { added: number[]; updated: number[]; removed: number[] }, origin: any) => void)
@@ -123,9 +126,9 @@ export class SSYjsProvider {
 
   private bindAwarenessUpdates(): void {
     this.awarenessHandler = (changes, origin) => {
-      // Broadcast local state changes and our own cleanup operations.
+      // Broadcast local state changes, our own cleanup operations, and stale peer removals.
       // Skip re-broadcasting updates received from remote peers (origin = peerId string).
-      if (origin !== 'local' && origin !== this) return
+      if (origin !== 'local' && origin !== this && origin !== 'stale-cleanup') return
 
       const changedClients = changes.added.concat(changes.updated, changes.removed)
       if (changedClients.length === 0) return
