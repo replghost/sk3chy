@@ -10,7 +10,7 @@ import { useSubstrateWallet } from '~/composables/useSubstrateWallet'
 import { useReviveMapAccount } from '~/composables/useReviveMapAccount'
 import { useOnChainSettings } from '~/composables/useOnChainSettings'
 import { useGameContract } from '~/composables/useGameContract'
-import { getAllDifficulties, type DifficultyLevel } from '~/utils/wordDictionary'
+import { getAllDifficulties, getAllPacks, type DifficultyLevel, type WordPackId } from '~/utils/wordPacks'
 import contractABI from '~/utils/abi/Sk3chyGame.json'
 import type { Address } from 'viem'
 import { createPublicClient, http } from 'viem'
@@ -24,7 +24,7 @@ const {
   ready, strokes, liveStrokes, peers, guesses, brushColor, brushSize, userId, displayName,
   isHost, canDraw, gameState, timeRemaining, isRoomFull, canJoin, maxPlayers,
   start, addPoint, commitStroke, setCursor, setDisplayName, setWalletAddress, sendGuess, clearCanvas,
-  generateWordOptions, selectWord, startGame, resetGame, setDifficulty, setDuration,
+  generateWordOptions, selectWord, startGame, resetGame, setWordPack, setDifficulty, setDuration,
   getYRoom
 } = useDrawingGame(roomId)
 
@@ -134,6 +134,7 @@ const drawingColors = [
 ]
 
 const difficulties = getAllDifficulties()
+const wordPacks = getAllPacks()
 
 // Separate active players from spectators
 const activePlayers = computed(() => peers.value.slice(0, maxPlayers))
@@ -1435,6 +1436,28 @@ watch([address, isConnected], ([newAddress, newIsConnected], [prevAddress, prevC
               </div>
             </div>
 
+            <!-- Word Pack -->
+            <div>
+              <label class="block text-sm font-medium mb-3">Word Pack</label>
+              <div class="flex gap-2">
+                <button
+                  v-for="pack in wordPacks"
+                  :key="pack.id"
+                  @click="isHost && setWordPack(pack.id)"
+                  :disabled="!isHost"
+                  class="flex-1 py-3 px-2 rounded-lg font-medium transition-all text-sm"
+                  :class="[
+                    gameState.wordPack === pack.id
+                      ? 'bg-primary text-white shadow-lg scale-105'
+                      : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600',
+                    !isHost && 'cursor-not-allowed opacity-60'
+                  ]"
+                >
+                  {{ pack.icon }} {{ pack.name }}
+                </button>
+              </div>
+            </div>
+
             <!-- Difficulty -->
             <div>
               <label class="block text-sm font-medium mb-3">Difficulty</label>
@@ -1446,8 +1469,8 @@ watch([address, isConnected], ([newAddress, newIsConnected], [prevAddress, prevC
                   :disabled="!isHost"
                   class="flex-1 py-3 px-2 rounded-lg font-medium transition-all text-sm"
                   :class="[
-                    gameState.difficulty === diff 
-                      ? 'bg-primary text-white shadow-lg scale-105' 
+                    gameState.difficulty === diff
+                      ? 'bg-primary text-white shadow-lg scale-105'
                       : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600',
                     !isHost && 'cursor-not-allowed opacity-60'
                   ]"

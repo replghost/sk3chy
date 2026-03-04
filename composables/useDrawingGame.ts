@@ -4,7 +4,7 @@ import { nanoid } from 'nanoid'
 import * as Y from 'yjs'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { sha256 } from 'crypto-hash'
-import { getRandomWords, type DifficultyLevel } from '~/utils/wordDictionary'
+import { getRandomWords, getAllPacks, type DifficultyLevel, type WordPackId } from '~/utils/wordPacks'
 import { useLogger } from '~/composables/useLogger'
 
 // Maximum number of players allowed in a game
@@ -39,6 +39,7 @@ type GameState = {
   wordSalt: string | null  // Revealed at end for verification
   wordLength: number | null  // Length of word (safe to reveal)
   wordOptions: string[] | null
+  wordPack: WordPackId
   difficulty: DifficultyLevel
   startTime: number | null
   endTime: number | null  // When game actually ended
@@ -81,6 +82,7 @@ export function useDrawingGame(roomId: string) {
     wordSalt: null,
     wordLength: null,
     wordOptions: null,
+    wordPack: 'classic',
     difficulty: 'medium',
     startTime: null,
     endTime: null,
@@ -250,6 +252,7 @@ export function useDrawingGame(roomId: string) {
         if (!yroom.game.get('status') || yroom.game.get('status') === 'finished') {
           yroom.game.set('status', 'waiting')
         }
+        yroom.game.set('wordPack', yroom.game.get('wordPack') ?? 'classic')
         yroom.game.set('difficulty', yroom.game.get('difficulty') ?? 'medium')
         yroom.game.set('duration', yroom.game.get('duration') ?? 180)
       })
@@ -515,6 +518,7 @@ export function useDrawingGame(roomId: string) {
       wordSalt: ygame.get('wordSalt') || null,
       wordLength: ygame.get('wordLength') || null,
       wordOptions: ygame.get('wordOptions') || null,
+      wordPack: ygame.get('wordPack') || 'classic',
       difficulty: ygame.get('difficulty') || 'medium',
       startTime: ygame.get('startTime') || null,
       endTime: ygame.get('endTime') || null,
@@ -549,7 +553,7 @@ export function useDrawingGame(roomId: string) {
 
   function generateWordOptions() {
     if (!isDrawer.value && !isHost.value) return
-    const words = getRandomWords(gameState.value.difficulty, 3)
+    const words = getRandomWords(gameState.value.wordPack, gameState.value.difficulty, 3)
     yroom.game.set('wordOptions', words)
     yroom.game.set('status', 'selecting')
   }
@@ -801,7 +805,7 @@ export function useDrawingGame(roomId: string) {
     addLog(`Round ${nextRound} — ${getPlayerName(nextDrawerId)} is drawing`, 'info')
 
     // Generate new word options for the next drawer
-    const words = getRandomWords(gameState.value.difficulty, 3)
+    const words = getRandomWords(gameState.value.wordPack, gameState.value.difficulty, 3)
 
     yroom.doc.transact(() => {
       yroom.game.set('roundNumber', nextRound)
@@ -1026,6 +1030,11 @@ export function useDrawingGame(roomId: string) {
     })
   }
 
+  function setWordPack(pack: WordPackId) {
+    if (!isHost.value) return
+    yroom.game.set('wordPack', pack)
+  }
+
   function setDifficulty(difficulty: DifficultyLevel) {
     if (!isHost.value) return
     yroom.game.set('difficulty', difficulty)
@@ -1080,7 +1089,7 @@ export function useDrawingGame(roomId: string) {
     // api
     start, addPoint, commitStroke, setCursor, setDisplayName, setWalletAddress, sendGuess,
     undoStroke, clearCanvas, addLobbyPoint, commitLobbyStroke, clearLobbyStrokes,
-    generateWordOptions, selectWord, startGame, requestNewGame, resetGame: requestNewGame, setDifficulty, setDuration,
+    generateWordOptions, selectWord, startGame, requestNewGame, resetGame: requestNewGame, setWordPack, setDifficulty, setDuration,
     advanceRound,
     // yroom access for SIWE
     getYRoom: () => yroom

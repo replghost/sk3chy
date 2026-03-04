@@ -1,0 +1,45 @@
+import type { WordPack } from './index'
+
+export const actionPack: WordPack = {
+  id: 'action',
+  name: 'Action',
+  description: 'Verbs and scenarios',
+  icon: '🏃',
+  words: {
+    easy: [
+      'running', 'swimming', 'cooking', 'juggling', 'sneezing',
+      'sleeping', 'dancing', 'singing', 'painting', 'fishing',
+      'climbing', 'surfing', 'skiing', 'skating', 'bowling',
+      'boxing', 'clapping', 'waving', 'yawning', 'laughing',
+      'crying', 'eating', 'drinking', 'reading', 'writing',
+      'jumping', 'kicking', 'throwing', 'catching', 'digging',
+      'riding a bike', 'flying a kite', 'blowing bubbles', 'hula hooping', 'jump rope',
+    ],
+    medium: [
+      'arm wrestling', 'slipping on banana', 'walking into glass door', 'food fight',
+      'pillow fight', 'limbo dance', 'crowd surfing', 'stage diving', 'belly flop',
+      'dodgeball', 'tug of war', 'chicken fight', 'wheelbarrow race', 'sack race',
+      'pie eating contest', 'hot dog eating contest', 'water balloon fight',
+      'snowball fight', 'building sandcastle', 'carving pumpkin',
+      'wrapping presents', 'blowing out candles', 'catching fireflies',
+      'walking the dog', 'parallel parking', 'changing a tire',
+      'assembling furniture', 'untangling headphones', 'popping bubble wrap',
+      'waiting in line', 'riding a bull', 'herding cats',
+      'spinning plates', 'walking a tightrope', 'sword swallowing',
+    ],
+    hard: [
+      'pretending to be busy', 'backseat driving', 'explaining memes to parents',
+      'humble bragging', 'procrastinating', 'overthinking', 'panic buying',
+      'sleepwalking', 'daydreaming', 'multitasking', 'social distancing',
+      'eavesdropping', 'ghosting someone', 'giving unsolicited advice',
+      'being stuck in traffic', 'missing the bus', 'forgetting someone\'s name',
+      'awkward handshake', 'accidental reply all', 'pocket dialing',
+      'walking into wrong room', 'waving at wrong person', 'laughing at wrong time',
+      'trying to look natural', 'pretending to know the lyrics',
+      'faking a phone call', 'holding the door for someone far away',
+      'stepping on a lego', 'burning toast', 'losing TV remote',
+      'fighting with umbrella in wind', 'trying to fold fitted sheet',
+      'choosing what to watch', 'explaining your job', 'adulting',
+    ],
+  },
+}

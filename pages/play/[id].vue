@@ -8,7 +8,7 @@ import { useDrawingGame } from '~/composables/useDrawingGame'
 import { useBrowserKeys } from '~/composables/useBrowserKeys'
 import { useUsernameRegistration } from '~/composables/useUsernameRegistration'
 import { useLogger } from '~/composables/useLogger'
-import { getAllDifficulties, type DifficultyLevel } from '~/utils/wordDictionary'
+import { getAllDifficulties, getAllPacks, type DifficultyLevel, type WordPackId } from '~/utils/wordPacks'
 
 const config = useRuntimeConfig()
 const route = useRoute()
@@ -26,7 +26,7 @@ const {
   maxPlayers, electionInProgress,
   start, addPoint, commitStroke, setCursor, setDisplayName, sendGuess,
   undoStroke, clearCanvas, addLobbyPoint, commitLobbyStroke, clearLobbyStrokes,
-  generateWordOptions, selectWord, startGame, requestNewGame, setDifficulty, setDuration,
+  generateWordOptions, selectWord, startGame, requestNewGame, setWordPack, setDifficulty, setDuration,
   advanceRound
 } = useDrawingGame(roomId)
 
@@ -127,6 +127,7 @@ const drawingColors = [
 ]
 
 const difficulties = getAllDifficulties()
+const wordPacks = getAllPacks()
 
 const handleSendGuess = () => {
   if (guessInput.value.trim()) {
@@ -889,7 +890,21 @@ watch(showOnboarding, (open, wasOpen) => {
       <!-- Host: compact start bar — bottom right -->
       <div v-if="isHost" class="absolute bottom-3 right-3 pointer-events-auto z-20">
         <div class="bg-black/60 backdrop-blur-md rounded-xl p-3 w-56">
-          <!-- Settings row -->
+          <!-- Word Pack selector -->
+          <div class="flex gap-1 mb-2">
+            <button
+              v-for="pack in wordPacks"
+              :key="pack.id"
+              @click="setWordPack(pack.id)"
+              class="flex-1 py-1 rounded-lg font-medium transition-all text-[10px]"
+              :class="gameState.wordPack === pack.id
+                ? 'bg-white text-black'
+                : 'bg-white/10 text-white/50 hover:bg-white/20'"
+            >
+              {{ pack.icon }} {{ pack.name }}
+            </button>
+          </div>
+          <!-- Difficulty -->
           <div class="flex gap-1 mb-2">
             <button
               v-for="diff in difficulties"
