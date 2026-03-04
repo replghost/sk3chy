@@ -21,7 +21,7 @@ const route = useRoute()
 const roomId = `game-subs-${String(route.params.id)}`
 
 const {
-  ready, strokes, peers, guesses, brushColor, brushSize, userId, displayName,
+  ready, strokes, liveStrokes, peers, guesses, brushColor, brushSize, userId, displayName,
   isHost, canDraw, gameState, timeRemaining, isRoomFull, canJoin, maxPlayers,
   start, addPoint, commitStroke, setCursor, setDisplayName, setWalletAddress, sendGuess, clearCanvas,
   generateWordOptions, selectWord, startGame, resetGame, setDifficulty, setDuration,
@@ -1804,6 +1804,7 @@ watch([address, isConnected], ([newAddress, newIsConnected], [prevAddress, prevC
         ref="canvasRef"
         v-if="ready"
         :strokes="strokes"
+        :liveStrokes="liveStrokes"
         :peers="peers"
         :canDraw="canDraw"
         v-model:brushColor="brushColor"

@@ -595,12 +595,15 @@ export function useDrawingGame(roomId: string) {
       })
       // Deduplicate (a reconnecting peer may have multiple awareness entries)
       const playerIds = [...new Set(awarenessPlayerIds)]
-      // Shuffle draw order
-      const shuffled = [...playerIds]
-      for (let i = shuffled.length - 1; i > 0; i--) {
+      // Shuffle draw order, but ensure the current drawer (who selected the word)
+      // is always first so they draw round 1 with their committed word/salt
+      const currentDrawerId = userId.value
+      const others = playerIds.filter(id => id !== currentDrawerId)
+      for (let i = others.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))
-        ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+        ;[others[i], others[j]] = [others[j], others[i]]
       }
+      const shuffled = [currentDrawerId, ...others]
       // Init scores for all players (check both awareness and peers for display names)
       const scores: Record<string, { name: string; score: number }> = {}
       const awarenessNames = new Map<string, string>()
