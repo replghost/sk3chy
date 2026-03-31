@@ -1086,35 +1086,8 @@ function copyAddress(address: string | number) {
 onMounted(() => {
   refreshExtensions()
 
-  // Build ICE servers array - keep it minimal to avoid "5+ servers" warning
-  const iceServers: RTCIceServer[] = [
-    { urls: 'stun:stun.l.google.com:19302' }
-  ]
-
-  // Add TURN server only if credentials are configured and valid
-  // Use only 2 TURN URLs to avoid "5+ servers" warning
-  if (config.public.turnUsername && config.public.turnCredential && 
-      config.public.turnUsername.length > 0 && config.public.turnCredential.length > 0) {
-    console.log('[Game] TURN server configured')
-    iceServers.push({
-      urls: [
-        'turn:a.relay.metered.ca:443',
-        'turn:a.relay.metered.ca:443?transport=tcp'
-      ],
-      username: config.public.turnUsername,
-      credential: config.public.turnCredential
-    })
-  } else {
-    console.log('[Game] Using STUN-only (no TURN servers - this is fine for local testing)')
-  }
-
-  start({
-    iceServers,
-    statementStoreEndpoint: config.public.statementStoreWs as string,
-    signingMode: (config.public.statementStoreSigningMode as string) || 'ephemeral',
-    peerId: userId.value,
-    username: displayName.value || userId.value
-  })
+  // Host-sdk CRDT mode: signaling, persistence, and transport handled by host runtime
+  start()
 })
 
 // Initialize Substrate auth when room is ready

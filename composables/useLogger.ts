@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { LogType, LogEntry } from '~/lib/ss-webrtc/types'
+import type { LogType, LogEntry } from '~/lib/host-crdt-types'
 
 const MAX_LOGS = 200
 

@@ -268,8 +268,8 @@ export function useDrawingGame(roomId: string) {
     return { elected: winner.id === candidateId, hostId: winner.id }
   }
 
-  async function start(roomOpts?: { iceServers?: RTCIceServer[]; [key: string]: any }) {
-    // Recreate from scratch when reconnecting with another signaling backend.
+  async function start(roomOpts?: { transport?: string }) {
+    // Recreate from scratch when reconnecting.
     if (yroom) {
       try { yroom?.provider?.destroy?.() } catch {}
       try { yroom?.doc?.destroy?.() } catch {}
@@ -303,26 +303,21 @@ export function useDrawingGame(roomId: string) {
 
     // Check for existing valid host
     const existingHostId = ygame.get('hostId') as string | null
-    const hostSetAt = ygame.get('hostSetAt') as number | null
     const hostEpoch = (ygame.get('hostEpoch') as number | null) ?? 0
 
-    // Detect stale IDB host entries (older than 5 minutes = likely a previous session)
-    // BUT only treat as stale if the host is NOT present in awareness (actually connected)
-    const SESSION_STALENESS_MS = 5 * 60 * 1000
-    const timestampStale = !hostSetAt || (Date.now() - hostSetAt > SESSION_STALENESS_MS)
+    // Check if host is present in awareness (actually connected)
     let hostInAwareness = false
     yroom.awareness.getStates().forEach((state: any) => {
       if (state.id === existingHostId) hostInAwareness = true
     })
-    const isStale = timestampStale && !hostInAwareness
 
-    if (existingHostId && !isStale) {
-      console.log('[DrawingGame] Found existing host:', existingHostId, hostInAwareness ? '(in awareness)' : '(timestamp valid)')
+    if (existingHostId && hostInAwareness) {
+      console.log('[DrawingGame] Found existing host:', existingHostId, '(in awareness)')
       addLog(`Joined room (host: ${existingHostId.slice(0, 10)}...)`, 'info')
       syncGameState()
     } else {
       // No valid host — run election
-      console.log('[DrawingGame] No valid host, running election (stale:', isStale, 'hostInAwareness:', hostInAwareness, ')')
+      console.log('[DrawingGame] No valid host, running election (hostInAwareness:', hostInAwareness, ')')
       await runElection(hostEpoch + 1)
     }
 

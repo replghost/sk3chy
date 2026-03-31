@@ -548,142 +548,21 @@ function switchChain(endpoint: string) {
   window.location.href = url.toString()
 }
 
-async function connectToChain(endpoint: string) {
+async function connectToChain(_endpoint: string) {
   connecting.value = true
   connectionError.value = null
 
   try {
-    // Determine whether to use host (Spektr) or standalone mode
-    let useHostMode = false
-    let preferredName: string | undefined
+    // Host-sdk CRDT mode: signaling, persistence, and transport are handled by the host runtime
+    const preferredName = keys.username.value || registration.fullUsername.value || undefined
 
-    if (keys.isInHost.value) {
-      // Wait for Spektr extension to initialize (connected or failed)
-      await new Promise<void>((resolve) => {
-        if (keys.spektrReady.value || keys.spektrInitFailed.value) return resolve()
-        const timer = setTimeout(() => { stop(); resolve() }, 8000)
-        const stop = watch(
-          [keys.spektrReady, keys.spektrInitFailed],
-          ([ready, failed]) => {
-            if (ready || failed) { clearTimeout(timer); stop(); resolve() }
-          }
-        )
-      })
-
-      if (keys.spektrInitFailed.value) {
-        throw new Error('Could not connect to host wallet. Ensure the host app supports Spektr.')
-      }
-
-      // Spektr connected — wait for an account (user may need to connect wallet in host)
-      if (!keys.spektrAccount.value) {
-        addLog('Waiting for host wallet — connect an account in the host app', 'warning')
-      }
-      await new Promise<void>((resolve, reject) => {
-        if (keys.spektrAccount.value) return resolve()
-        const timer = setTimeout(() => { stop(); reject(new Error('Connect a wallet in the host app to continue.')) }, 120000)
-        const stop = watch(
-          () => keys.spektrAccount.value,
-          (acc) => {
-            if (acc) { clearTimeout(timer); stop(); resolve() }
-          }
-        )
-      })
-      useHostMode = true
-    }
-
-    if (useHostMode) {
-      // Host mode: prefer local browser wallet if registered, else ephemeral
-      const account = keys.spektrAccount.value!
-      registration.init(endpoint)
-
-      if (registration.isRegisteredForCurrentEndpoint.value && keys.wallet.value?.mnemonic) {
-        // User has a registered local wallet for this chain — use it
-        preferredName = keys.username.value || account.name || undefined
-        addLog('Using registered browser wallet for signaling (host mode)', 'info')
-        onboardingRequireOnChain.value = false
-        try {
-          await start({
-            statementStoreEndpoint: endpoint,
-            signingMode: 'mnemonic',
-            mnemonic: keys.wallet.value.mnemonic,
-            peerId: userId.value,
-            username: preferredName,
-            onLog: addLog,
-          })
-        } catch (error: any) {
-          const message = error?.message || 'Unknown error'
-          addLog(`Statement-store signaling failed: ${message}`, 'error')
-          throw new Error(message)
-        }
-      } else {
-        // No registered wallet — try ephemeral, fall back to registration if noAllowance
-        preferredName = account.name || keys.username.value || undefined
-        addLog('Using ephemeral signing key (host mode)', 'info')
-        onboardingRequireOnChain.value = false
-        try {
-          await start({
-            statementStoreEndpoint: endpoint,
-            signingMode: 'ephemeral',
-            peerId: userId.value,
-            username: preferredName,
-            onLog: addLog,
-          })
-        } catch (error: any) {
-          const message = error?.message || 'Unknown error'
-          if (message.includes('statement-store allowance')) {
-            // Ephemeral key has no allowance — require on-chain registration
-            addLog('Ephemeral key rejected, switching to on-chain registration', 'warning')
-            onboardingRequireOnChain.value = true
-            onboardingChainEndpoint.value = endpoint
-            showOnboarding.value = true
-            throw new Error('On-chain registration required for this chain before joining')
-          }
-          addLog(`Statement-store signaling failed: ${message}`, 'error')
-          throw new Error(message)
-        }
-      }
-    } else {
-      // Standalone mode — require on-chain registration
-      registration.init(endpoint)
-      onboardingChainEndpoint.value = endpoint
-      onboardingRequireOnChain.value = true
-
-      if (!registration.isRegisteredForCurrentEndpoint.value) {
-        showOnboarding.value = true
-        throw new Error('On-chain registration required for this chain before joining')
-      }
-
-      preferredName = keys.username.value || undefined
-      try {
-        await start({
-          statementStoreEndpoint: endpoint,
-          signingMode: 'mnemonic',
-          mnemonic: keys.wallet.value!.mnemonic,
-          peerId: userId.value,
-          username: preferredName,
-          onLog: addLog,
-        })
-      } catch (error: any) {
-        const message = error?.message || 'Unknown error'
-        addLog(`Statement-store signaling failed: ${message}`, 'error')
-        throw new Error(message)
-      }
-    }
+    await start()
 
     if (preferredName) {
       setDisplayName(preferredName)
     }
   } catch (e: any) {
-    const message = e?.message || 'Connection failed'
-    if (message.includes('statement-store allowance')) {
-      registration.clearChainRegistration()
-      onboardingRequireOnChain.value = true
-      onboardingChainEndpoint.value = endpoint
-      showOnboarding.value = true
-      connectionError.value = 'This account is not approved for statement-store writes on this chain. Register again for this endpoint.'
-    } else {
-      connectionError.value = message
-    }
+    connectionError.value = e?.message || 'Connection failed'
   } finally {
     connecting.value = false
   }
