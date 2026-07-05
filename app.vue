@@ -23,10 +23,10 @@ onMounted(() => {
   keys.init()
   if (keys.isInHost.value) {
     // In iframe — assume host provides identity, skip onboarding.
-    // If Spektr handshake fails, the play page falls back to WebRTC,
+    // If product-host handshake fails, the play page falls back to WebRTC,
     // so show onboarding as fallback if no username is set.
     showOnboarding.value = false
-    watch(keys.spektrInitFailed, (failed) => {
+    watch(keys.productHostInitFailed, (failed) => {
       if (failed && !keys.username.value) {
         showOnboarding.value = true
       }

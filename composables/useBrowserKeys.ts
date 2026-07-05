@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { sr25519CreateDerive, withNetworkAccount } from '@polkadot-labs/hdkd'
 import {
   generateMnemonic,
@@ -6,7 +6,7 @@ import {
   validateMnemonic,
 } from '@polkadot-labs/hdkd-helpers'
 import { u8aToHex } from '@polkadot/util'
-import { useSpektr } from './useSpektr'
+import { useProductHost } from '~/composables/useProductHost'
 
 const STORAGE_KEY_MNEMONIC = 'sk3tchy-mnemonic'
 const STORAGE_KEY_USERNAME = 'sk3tchy-username'
@@ -22,20 +22,34 @@ export interface BrowserWallet {
 
 // Module-level cache so derivation happens once (singleton)
 let cachedWallet: BrowserWallet | null = null
+let memoryMnemonic: string | null = null
+let memoryUsername = ''
 
 const wallet = ref<BrowserWallet | null>(null)
 const username = ref('')
 const shortAddress = ref('')
 const initialized = ref(false)
 
-// Lazy-init Spektr — deferred until first useBrowserKeys() call
-// inside a Vue component context, avoiding module-scope computed().
-let spektr: ReturnType<typeof useSpektr> | null = null
-function getSpektr() {
-  if (!spektr) {
-    spektr = useSpektr()
+function getStoredValue(key: string): string {
+  if (typeof window === 'undefined') return ''
+  try {
+    return window.localStorage.getItem(key) || ''
+  } catch {
+    return key === STORAGE_KEY_USERNAME ? memoryUsername : (memoryMnemonic || '')
   }
-  return spektr
+}
+
+function setStoredValue(key: string, value: string): void {
+  if (key === STORAGE_KEY_USERNAME) memoryUsername = value
+  if (key === STORAGE_KEY_MNEMONIC) memoryMnemonic = value
+
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(key, value)
+  } catch {
+    // Sandboxed products may block localStorage. Keep an in-memory value so the
+    // app can still boot and rely on product-host identity where available.
+  }
 }
 
 function deriveWallet(mnemonic: string): BrowserWallet {
@@ -56,49 +70,62 @@ function deriveWallet(mnemonic: string): BrowserWallet {
 function init() {
   if (cachedWallet) {
     wallet.value = cachedWallet
-    username.value = localStorage.getItem(STORAGE_KEY_USERNAME) || ''
+    username.value = getStoredValue(STORAGE_KEY_USERNAME)
     shortAddress.value = cachedWallet.address.slice(0, 6) + '...' + cachedWallet.address.slice(-4)
     initialized.value = true
     return
   }
 
-  let mnemonic = localStorage.getItem(STORAGE_KEY_MNEMONIC)
+  let mnemonic = getStoredValue(STORAGE_KEY_MNEMONIC)
 
   if (!mnemonic || !validateMnemonic(mnemonic)) {
     mnemonic = generateMnemonic(128) // 12 words
-    localStorage.setItem(STORAGE_KEY_MNEMONIC, mnemonic)
+    setStoredValue(STORAGE_KEY_MNEMONIC, mnemonic)
   }
 
-  const stored = localStorage.getItem(STORAGE_KEY_USERNAME)
+  const stored = getStoredValue(STORAGE_KEY_USERNAME)
   if (stored) username.value = stored
 
   cachedWallet = deriveWallet(mnemonic)
   wallet.value = cachedWallet
   shortAddress.value = cachedWallet.address.slice(0, 6) + '...' + cachedWallet.address.slice(-4)
   initialized.value = true
-
-  // Also init Spektr (no-ops if not in iframe)
-  getSpektr().init()
 }
 
 function setUsername(name: string) {
   username.value = name
-  localStorage.setItem(STORAGE_KEY_USERNAME, name)
+  setStoredValue(STORAGE_KEY_USERNAME, name)
 }
 
 export function useBrowserKeys() {
-  const s = getSpektr()
+  const productHost = useProductHost()
+  function initProductAware() {
+    init()
+    void productHost.detect().then((inside) => {
+      if (inside) {
+        void productHost.connect().catch(() => undefined)
+      }
+    })
+  }
+
   return {
-    init,
+    init: initProductAware,
     wallet,
     username,
     shortAddress,
     initialized,
     setUsername,
-    isInHost: s.isInContainer,
-    spektrReady: s.isReady,
-    spektrInitFailed: s.initFailed,
-    spektrAccount: s.selectedAccount,
-    spektrSignRaw: s.signRaw,
+    isInHost: productHost.isInsideHost,
+    productHostReady: computed(() => productHost.status.value === 'connected'),
+    productHostInitFailed: computed(() => productHost.status.value === 'error'),
+    productHostAccount: productHost.activeAccount,
+    productHostSignRaw: async (hexMessage: string) => {
+      const account = productHost.activeAccount.value ?? await productHost.connect()
+      if (!account) throw new Error('Product host account not available')
+      const hex = hexMessage.startsWith('0x') ? hexMessage.slice(2) : hexMessage
+      const payload = Uint8Array.from(hex.match(/.{1,2}/g)?.map((byte) => Number.parseInt(byte, 16)) ?? [])
+      const signature = await account.polkadotSigner.signBytes(payload)
+      return u8aToHex(signature)
+    },
   }
 }

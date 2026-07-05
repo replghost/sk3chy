@@ -1,4 +1,4 @@
-import { usePapiClient } from '~/composables/usePapiClient'
+import { getPapiClient } from '~/composables/usePapiClient'
 import { useSubstrateWallet } from '~/composables/useSubstrateWallet'
 import { decodeAddress, keccakAsU8a } from '@polkadot/util-crypto'
 import { u8aToHex, hexToU8a } from '@polkadot/util'
@@ -125,7 +125,7 @@ export function useReviveMapAccount() {
     if (/^0x[0-9a-fA-F]{40}$/.test(activeAccount.value.address)) {
       throw new Error('Selected account is an EVM address. Please choose a Substrate (SS58) account.')
     }
-    const client = usePapiClient()
+    const client = await getPapiClient()
     if (!client) throw new Error('PAPI client not available')
 
     status.value = 'mapping'
@@ -180,7 +180,7 @@ export function useReviveMapAccount() {
     if (/^0x[0-9a-fA-F]{40}$/.test(activeAccount.value.address)) {
       throw new Error('Selected account is an EVM address. Please choose a Substrate (SS58) account.')
     }
-    const client = usePapiClient()
+    const client = await getPapiClient()
     if (!client) throw new Error('PAPI client not available')
 
     unmapStatus.value = 'unmapping'
@@ -245,7 +245,7 @@ export function useReviveMapAccount() {
     mapNote.value = null
 
     try {
-      const client = usePapiClient()
+      const client = await getPapiClient()
       if (!client) throw new Error('PAPI client not available')
       const api: any = client.getUnsafeApi()
       const getter = resolveOriginalAccountQuery(api)

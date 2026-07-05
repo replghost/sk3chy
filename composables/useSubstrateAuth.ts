@@ -1,6 +1,12 @@
 import { cryptoWaitReady, signatureVerify } from '@polkadot/util-crypto'
 import { hexToU8a, stringToU8a, u8aToHex } from '@polkadot/util'
-import type { InjectedPolkadotAccount } from 'polkadot-api/pjs-signer'
+
+interface SignableSubstrateAccount {
+  address: string
+  polkadotSigner: {
+    signBytes(data: Uint8Array): Promise<Uint8Array | string>
+  }
+}
 
 export interface SubstrateAuthData {
   address: string
@@ -71,7 +77,7 @@ export function useSubstrateAuth(yroom: any, chainId: string) {
     return message
   }
 
-  async function signIn(account: InjectedPolkadotAccount) {
+  async function signIn(account: SignableSubstrateAccount) {
     await ensureCryptoReady()
 
     const payload =

@@ -1,0 +1,16 @@
+[app]
+id = "sk3chy.dot"
+name = "sk3chy"
+version = "0.1.0"
+app_type = "spa"
+
+[webapp]
+entry = "index.html"
+sandbox = "strict"
+chain = "paseo-asset-hub"
+
+[permissions]
+sign = true
+statements = true
+storage = true
+wasm = true

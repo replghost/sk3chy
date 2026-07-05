@@ -55,7 +55,25 @@ Copy `.env.example` to `.env` and configure:
 bun test
 ```
 
-Runs Playwright E2E tests across Chromium and Firefox with 3 participants using the real PreviewNet Statement Store.
+Runs Playwright E2E tests. The focused CRDT fallback smoke uses a local mock
+Statement Store so it is deterministic:
+
+```bash
+bun run test:crdt
+```
+
+To run the same CRDT fallback flow against a real Statement Store, provide a
+WebSocket endpoint and a test mnemonic that already has Statement Store
+allowance on that chain:
+
+```bash
+LIVE_STATEMENT_STORE_WS=wss://previewnet.substrate.dev/people \
+LIVE_STATEMENT_STORE_MNEMONIC="..." \
+bun run test:crdt:live
+```
+
+The live test writes statements under a unique `sk3chy:crdt:*` room topic, so
+use only disposable test credentials.
 
 Manual testing:
 1. Open `http://localhost:3000/play/test1` in two browser tabs
@@ -69,3 +87,31 @@ bun build
 ```
 
 Deploy to any Nuxt-compatible hosting platform (Vercel, Netlify, etc.)
+
+### Polkadot Host Product Build
+
+Build the SPA as a host-compatible product archive:
+
+```bash
+APP_DOTNS_DOMAIN=sk3chy.dot bun run build:product
+```
+
+This writes `dist/` with relative Nuxt assets and a `manifest.toml`.
+
+The product runtime defaults to Paseo Next v2 Asset Hub:
+
+```text
+wss://paseo-asset-hub-next-rpc.polkadot.io
+0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f
+```
+
+Deploy to Bulletin/DotNS with `bulletin-deploy`. The deploy script defaults to
+`BULLETIN_ENV=paseo-next-v2`:
+
+```bash
+APP_DOTNS_DOMAIN=sk3chy.dot bun run deploy:product
+```
+
+Set `PUBLISH=1` to ask `bulletin-deploy` to publish the product manifest where
+supported. Secrets such as mnemonics should be provided only through the deploy
+CLI prompt or environment expected by `bulletin-deploy`; do not commit them.

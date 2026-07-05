@@ -1,6 +1,8 @@
 import { connectInjectedExtension, getInjectedExtensions, type InjectedExtension, type InjectedPolkadotAccount } from 'polkadot-api/pjs-signer'
+import { useProductHost, type ProductHostAccount } from '~/composables/useProductHost'
 
 type WalletStatus = 'idle' | 'connecting' | 'connected' | 'error'
+type Sk3chySubstrateAccount = InjectedPolkadotAccount | ProductHostAccount
 
 let activeExtension: InjectedExtension | null = null
 let unsubscribeAccounts: (() => void) | null = null
@@ -11,15 +13,20 @@ function isEvmAddress(address: string) {
 
 export function useSubstrateWallet() {
   const extensions = useState<string[]>('substrate-wallet-extensions', () => [])
-  const accounts = useState<InjectedPolkadotAccount[]>('substrate-wallet-accounts', () => [])
-  const activeAccount = useState<InjectedPolkadotAccount | null>('substrate-wallet-active', () => null)
+  const accounts = useState<Sk3chySubstrateAccount[]>('substrate-wallet-accounts', () => [])
+  const activeAccount = useState<Sk3chySubstrateAccount | null>('substrate-wallet-active', () => null)
   const status = useState<WalletStatus>('substrate-wallet-status', () => 'idle')
   const error = useState<string | null>('substrate-wallet-error', () => null)
   const connectedExtension = useState<string | null>('substrate-wallet-extension', () => null)
   const config = useRuntimeConfig()
+  const productHost = useProductHost()
 
   async function refreshExtensions() {
     if (process.server) return []
+    if (await productHost.detect()) {
+      extensions.value = ['Polkadot Host']
+      return extensions.value
+    }
     const list = getInjectedExtensions()
     extensions.value = list
     return list
@@ -34,6 +41,15 @@ export function useSubstrateWallet() {
       const available = await refreshExtensions()
       const target = extensionName ?? available[0]
       if (!target) throw new Error('No Substrate wallets detected')
+
+      if (target === 'Polkadot Host') {
+        connectedExtension.value = target
+        const account = await productHost.connect()
+        accounts.value = account ? [account] : []
+        activeAccount.value = account
+        status.value = 'connected'
+        return null
+      }
 
       connectedExtension.value = target
       const dappName = (config.public.substrateDappName as string) || 'sk3chy'
@@ -76,6 +92,7 @@ export function useSubstrateWallet() {
       activeExtension.disconnect()
       activeExtension = null
     }
+    productHost.disconnect()
     accounts.value = []
     activeAccount.value = null
     connectedExtension.value = null

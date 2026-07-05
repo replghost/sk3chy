@@ -5,18 +5,22 @@
   "type": "module",
   "scripts": {
     "build": "nuxt build",
+    "build:product": "bash scripts/build-product.sh",
+    "deploy:product": "bash scripts/deploy-product.sh",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "test": "playwright test",
+    "test:crdt": "playwright test tests/crdt-fallback.spec.ts",
+    "test:crdt:live": "playwright test tests/crdt-fallback-live.spec.ts",
     "test:ui": "playwright test --ui",
     "test:unit": "vitest run"
   },
   "dependencies": {
     "@noble/curves": "^2.0.1",
-    "@novasamatech/product-sdk": "0.6.1",
     "@nuxt/ui": "^2.18.7",
+    "@parity/product-sdk-host": "^0.12.0",
     "@polkadot-api/descriptors": "file:.papi/descriptors",
     "@polkadot-api/polkadot-sdk-compat": "^2.4.1",
     "@polkadot-api/sdk-statement": "^0.4.0",

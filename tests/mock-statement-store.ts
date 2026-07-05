@@ -11,6 +11,7 @@
  */
 
 import { WebSocketServer, type WebSocket } from 'ws'
+import type { AddressInfo } from 'net'
 
 interface JsonRpcRequest {
   jsonrpc: string
@@ -24,12 +25,13 @@ export function createMockStatementStore(port: number): Promise<{
   close: () => void
 }> {
   return new Promise((resolve, reject) => {
-    const wss = new WebSocketServer({ port })
+    const wss = new WebSocketServer({ host: '127.0.0.1', port })
     const statements: string[] = [] // All submitted statement hex strings
     const subscribers = new Map<WebSocket, Set<string>>() // ws → subscription IDs
 
     wss.on('listening', () => {
-      const url = `ws://127.0.0.1:${port}`
+      const address = wss.address() as AddressInfo
+      const url = `ws://127.0.0.1:${address.port}`
       console.log(`[MockStatementStore] Listening on ${url}`)
       resolve({
         url,
@@ -77,6 +79,9 @@ export function createMockStatementStore(port: number): Promise<{
                 'system_chain',
                 'rpc_methods',
                 'statement_submit',
+                'statement_broadcastsStatement',
+                'statement_postedStatement',
+                'statement_dump',
                 'statement_subscribeStatement',
                 'statement_unsubscribeStatement',
               ],
@@ -109,7 +114,14 @@ export function createMockStatementStore(port: number): Promise<{
             }
           }
 
-          send(ws, { jsonrpc: '2.0', id, result: 'new' })
+          send(ws, { jsonrpc: '2.0', id, result: { status: 'new' } })
+          break
+        }
+
+        case 'statement_broadcastsStatement':
+        case 'statement_postedStatement':
+        case 'statement_dump': {
+          send(ws, { jsonrpc: '2.0', id, result: [...statements] })
           break
         }
 
