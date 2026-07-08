@@ -1,13 +1,15 @@
 <template>
   <div class="min-h-screen">
-    <AppHeader v-if="!keys.isInHost.value" />
-    <NuxtPage />
-    <AppFooter v-if="!keys.isInHost.value" />
-    <OnboardingModal
-      v-model="showOnboarding"
-      :require-on-chain="onboardingRequireOnChain"
-      :chain-endpoint="onboardingChainEndpoint"
-    />
+    <NuxtPage v-if="keys.isInHost.value" />
+    <div v-else class="fixed inset-0 flex items-center justify-center p-6 text-center">
+      <div class="max-w-md space-y-3">
+        <h1 class="text-2xl font-bold">sk3chy runs inside the Polkadot app</h1>
+        <p class="text-gray-400">
+          Open <span class="font-mono text-gray-200">sk3chy-game.dot</span> in the Polkadot
+          app to play.
+        </p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -15,25 +17,9 @@
 import { useBrowserKeys } from '~/composables/useBrowserKeys'
 
 const keys = useBrowserKeys()
-const showOnboarding = useState('showOnboarding', () => false)
-const onboardingRequireOnChain = useState('onboardingRequireOnChain', () => false)
-const onboardingChainEndpoint = useState('onboardingChainEndpoint', () => '')
 
 onMounted(() => {
   keys.init()
-  if (keys.isInHost.value) {
-    // In iframe — assume host provides identity, skip onboarding.
-    // If product-host handshake fails, the play page falls back to WebRTC,
-    // so show onboarding as fallback if no username is set.
-    showOnboarding.value = false
-    watch(keys.productHostInitFailed, (failed) => {
-      if (failed && !keys.username.value) {
-        showOnboarding.value = true
-      }
-    })
-  } else if (!keys.username.value) {
-    showOnboarding.value = true
-  }
 })
 </script>
 
