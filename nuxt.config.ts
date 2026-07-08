@@ -5,11 +5,6 @@ import topLevelAwait from 'vite-plugin-top-level-await'
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   devtools: { enabled: true },
-  app: {
-    // Product archives are served from host-controlled paths, so product builds
-    // set NUXT_APP_BASE_URL=./ to keep Nuxt chunks relative to index.html.
-    baseURL: process.env.NUXT_APP_BASE_URL || '/'
-  },
   modules: ['@nuxt/ui', '@wagmi/vue/nuxt'],
   vite: {
     plugins: [wasm(), topLevelAwait()],
@@ -28,6 +23,25 @@ export default defineNuxtConfig({
     }
   },
   ssr: false, // Enable SPA mode
+  app: {
+    // Product archives are served from host-controlled paths, so product builds
+    // set NUXT_APP_BASE_URL=./ to keep Nuxt chunks relative to index.html.
+    baseURL: process.env.NUXT_APP_BASE_URL || '/',
+    head: {
+      script: [
+        {
+          // Sandboxed product iframes (opaque origin — dothost/product-view)
+          // throw SecurityError on any window.localStorage access, crashing
+          // dependency code (color mode, wallet libs) during app mount.
+          // Shadow the blocked accessors with a memory-backed Storage before
+          // any other script runs.
+          tagPriority: 'critical',
+          innerHTML:
+            '(function(){function mk(){var m={};var s={getItem:function(k){return Object.prototype.hasOwnProperty.call(m,k)?m[k]:null},setItem:function(k,v){m[k]=String(v)},removeItem:function(k){delete m[k]},clear:function(){m={}},key:function(i){return Object.keys(m)[i]||null}};Object.defineProperty(s,"length",{get:function(){return Object.keys(m).length}});return s}["localStorage","sessionStorage"].forEach(function(n){try{window[n].getItem("__probe__")}catch(e){try{Object.defineProperty(window,n,{value:mk(),configurable:true})}catch(e2){}}});try{document.cookie}catch(e){try{var c="";Object.defineProperty(document,"cookie",{get:function(){return c},set:function(){},configurable:true})}catch(e2){}}try{document.cookie="__probe__=1"}catch(e){try{var c2=document.cookie||"";Object.defineProperty(document,"cookie",{get:function(){return c2},set:function(){},configurable:true})}catch(e2){}}})();',
+        },
+      ],
+    },
+  },
   runtimeConfig: {
     public: {
       statementStoreWs: process.env.NUXT_PUBLIC_STATEMENT_STORE_WS || 'wss://previewnet.substrate.dev/people',

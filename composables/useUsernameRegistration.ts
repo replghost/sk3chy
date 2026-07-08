@@ -9,6 +9,7 @@ import {
 } from '~/lib/usernameRegistration'
 import type { RegistrationProgressUpdate } from '~/lib/blockchainClient'
 import { setEndpoint, disconnectBlockchainClient } from '~/lib/blockchainClient'
+import { safeStorage } from '~/utils/safeStorage'
 
 type RegistrationStatus = 'idle' | 'checking' | 'registering' | 'polling' | 'done' | 'error'
 type AvailabilityStatus = 'AVAILABLE' | 'TAKEN' | 'INVALID' | null
@@ -68,11 +69,11 @@ export function useUsernameRegistration() {
       currentEndpoint.value = endpoint
     }
     // Restore from localStorage
-    const stored = localStorage.getItem(STORAGE_KEY_FULL_USERNAME)
-    const storedEndpoint = localStorage.getItem(STORAGE_KEY_REGISTERED_ENDPOINT) || ''
+    const stored = safeStorage.getItem(STORAGE_KEY_FULL_USERNAME)
+    const storedEndpoint = safeStorage.getItem(STORAGE_KEY_REGISTERED_ENDPOINT) || ''
     registeredEndpoint.value = storedEndpoint
 
-    chainRegistered.value = localStorage.getItem(STORAGE_KEY_REGISTERED) === 'true'
+    chainRegistered.value = safeStorage.getItem(STORAGE_KEY_REGISTERED) === 'true'
     const endpointMatches = !currentEndpoint.value || !storedEndpoint || storedEndpoint === currentEndpoint.value
 
     if (stored) {
@@ -176,11 +177,11 @@ export function useUsernameRegistration() {
       })
 
       // Save to localStorage
-      localStorage.setItem(STORAGE_KEY_FULL_USERNAME, response.username)
-      localStorage.setItem(STORAGE_KEY_REGISTERED, 'true')
+      safeStorage.setItem(STORAGE_KEY_FULL_USERNAME, response.username)
+      safeStorage.setItem(STORAGE_KEY_REGISTERED, 'true')
       chainRegistered.value = true
       if (currentEndpoint.value) {
-        localStorage.setItem(STORAGE_KEY_REGISTERED_ENDPOINT, currentEndpoint.value)
+        safeStorage.setItem(STORAGE_KEY_REGISTERED_ENDPOINT, currentEndpoint.value)
         registeredEndpoint.value = currentEndpoint.value
       }
       registrationProgress.value = 100
@@ -194,7 +195,7 @@ export function useUsernameRegistration() {
 
       // Graceful fallback: save as local-only username
       if (fullUsername.value) {
-        localStorage.setItem(STORAGE_KEY_FULL_USERNAME, fullUsername.value)
+        safeStorage.setItem(STORAGE_KEY_FULL_USERNAME, fullUsername.value)
       }
       resetProgress()
     } finally {
@@ -208,9 +209,9 @@ export function useUsernameRegistration() {
   function useLocalOnly(username: string) {
     registrationInFlight = false
     fullUsername.value = username
-    localStorage.setItem(STORAGE_KEY_FULL_USERNAME, username)
-    localStorage.removeItem(STORAGE_KEY_REGISTERED)
-    localStorage.removeItem(STORAGE_KEY_REGISTERED_ENDPOINT)
+    safeStorage.setItem(STORAGE_KEY_FULL_USERNAME, username)
+    safeStorage.removeItem(STORAGE_KEY_REGISTERED)
+    safeStorage.removeItem(STORAGE_KEY_REGISTERED_ENDPOINT)
     chainRegistered.value = false
     registeredEndpoint.value = ''
     status.value = 'done'
@@ -225,9 +226,9 @@ export function useUsernameRegistration() {
     fullUsername.value = ''
     chainRegistered.value = false
     registeredEndpoint.value = ''
-    localStorage.removeItem(STORAGE_KEY_FULL_USERNAME)
-    localStorage.removeItem(STORAGE_KEY_REGISTERED)
-    localStorage.removeItem(STORAGE_KEY_REGISTERED_ENDPOINT)
+    safeStorage.removeItem(STORAGE_KEY_FULL_USERNAME)
+    safeStorage.removeItem(STORAGE_KEY_REGISTERED)
+    safeStorage.removeItem(STORAGE_KEY_REGISTERED_ENDPOINT)
     resetProgress()
   }
 
@@ -236,8 +237,8 @@ export function useUsernameRegistration() {
     chainRegistered.value = false
     registeredEndpoint.value = ''
     status.value = 'idle'
-    localStorage.removeItem(STORAGE_KEY_REGISTERED)
-    localStorage.removeItem(STORAGE_KEY_REGISTERED_ENDPOINT)
+    safeStorage.removeItem(STORAGE_KEY_REGISTERED)
+    safeStorage.removeItem(STORAGE_KEY_REGISTERED_ENDPOINT)
     resetProgress()
   }
 
